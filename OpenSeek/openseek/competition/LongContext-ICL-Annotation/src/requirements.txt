@@ -1,0 +1,24 @@
+# Requirements for FlagOS Long-Context Data Annotation Competition
+
+# Core Dependencies
+transformers>=4.46.0
+torch>=2.3.0
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+numpy>=1.26.4
+tqdm>=4.66.4
+accelerate>=0.33.0
+
+# OpenAI-compatible client for FlagScale API
+openai>=1.40.0
+
+# Optional: For GPU acceleration with sentence-transformers
+sentence-transformers[opt]
+
+# For code execution in Dataset 8 evaluation
+# (subprocess is built-in, no additional package needed)
+
+# Development/Testing
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
