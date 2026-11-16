@@ -24,7 +24,12 @@ import numpy as np
 from cairn.context.builder import ContextBuilder, ContextConfig
 from cairn.context.render import render_demo
 from cairn.data import SplitSizes, TaskData, split_examples
-from cairn.decoding.calibrate import BatchCalibrator, IdentityCalibrator, VectorScaling
+from cairn.decoding.calibrate import (
+    BatchCalibrator,
+    IdentityCalibrator,
+    StackedCalibrator,
+    VectorScaling,
+)
 from cairn.decoding.conformal import SplitConformal
 from cairn.decoding.score import distinct_starts, score_options
 from cairn.eval.metrics import EvalReport, evaluate
@@ -37,6 +42,7 @@ from cairn.pipeline.journal import Journal
 from cairn.pipeline.memory import AnnotationMemory
 from cairn.pipeline.meter import UsageMeter
 from cairn.pipeline.scheduler import run_grouped
+from cairn.pipeline.signals import signal_row
 from cairn.tasks import get_task
 from cairn.tokens import TokenCounter
 from cairn.types import Example, Prediction, Query
@@ -84,6 +90,7 @@ class TaskRunner:
         self.conformal: SplitConformal | None = None
         self.program: InducedProgram | None = None
         self.memory: AnnotationMemory | None = None
+        self.signal_fn = None
         # Everything prepare() decided, in plain data, for the run report.
         self.notes: dict[str, object] = {}
 
@@ -173,11 +180,18 @@ class TaskRunner:
         # Two halves on purpose.  The conformal promise only holds if its threshold is
         # measured on examples the calibrator has NOT been fitted to.
         half = len(calib) // 2
-        if cfg.calibration == "vector":
+        extra = None
+        if cfg.calibration == "stack":
+            builder = self.builder
+            extra = np.vstack([signal_row(builder, e.input) for e in calib])
+            self.calibrator = StackedCalibrator().fit(raw[:half], y[:half], extra[:half])
+            self.signal_fn = lambda text: signal_row(builder, text)
+        elif cfg.calibration == "vector":
             self.calibrator = VectorScaling().fit(raw[:half], y[:half])
         else:
             self.calibrator = BatchCalibrator().fit(raw[:half])
-        probs = np.exp(self.calibrator.transform(raw[half:]))  # type: ignore[attr-defined]
+        held_extra = extra[half:] if extra is not None else None
+        probs = np.exp(self.calibrator.transform(raw[half:], held_extra))  # type: ignore[attr-defined]
         raw_accuracy = float((raw[half:].argmax(axis=1) == y[half:]).mean())
         note: dict[str, object] = {
             "method": cfg.calibration,
@@ -269,6 +283,7 @@ class TaskRunner:
             calibrator=self.calibrator,
             conformal=self.conformal,
             program_answers=program_answers,
+            signal_fn=self.signal_fn,
             memory=self.memory,
         )
         waves = _chunks(pending, self.config.memory_wave) if self.memory is not None else [pending]

@@ -283,6 +283,18 @@ def cmd_tune(args: argparse.Namespace, app: AppConfig) -> int:
     return 0
 
 
+def cmd_bench(args: argparse.Namespace, app: AppConfig) -> int:
+    from cairn.eval.bench import run_bench
+
+    report = run_bench(app, get_counter(args.tokenizer), args.data_dir, dev_limit=args.limit)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report, encoding="utf-8")
+    print(report)
+    print(f"\nwritten to {out}")
+    return 0
+
+
 def cmd_submit(args: argparse.Namespace, app: AppConfig) -> int:
     from cairn.submit import SubmissionError, build_zip
 
@@ -331,6 +343,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-k", type=int, default=15)
 
     add("doctor", cmd_doctor, "check which features the model server supports")
+
+    p = add("bench", cmd_bench, "measure everything that needs no model; write a report")
+    p.add_argument("--limit", type=int, default=300, help="dev inputs per task")
+    p.add_argument("--out", default="docs/results/offline_benchmarks.md")
 
     p = add("run", cmd_run, "label inputs")
     p.add_argument("--task", default="all")

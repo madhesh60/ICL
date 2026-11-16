@@ -31,6 +31,7 @@ every ladder needs no model at all.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -59,7 +60,8 @@ class StrategyConfig:
     use_program: bool = True
     # Classification: read probabilities instead of generated text.
     use_scoring: bool = True
-    calibration: Literal["none", "batch", "vector"] = "vector"
+    # "stack" also feeds cheap model-free signals (nearest-examples vote, task signals).
+    calibration: Literal["none", "batch", "vector", "stack"] = "vector"
     # Chance we accept that the true label is outside the conformal set.  None = no
     # conformal gate; `accept_confidence` is used as a plain threshold instead.
     conformal_alpha: float | None = 0.1
@@ -105,6 +107,7 @@ class Annotator:
         conformal: SplitConformal | None = None,
         program_answers: dict[str, str | None] | None = None,
         memory: AnnotationMemory | None = None,
+        signal_fn: Callable[[str], np.ndarray] | None = None,
     ) -> None:
         self.spec = spec
         self.builder = builder
@@ -114,6 +117,7 @@ class Annotator:
         self.conformal = conformal
         self.program_answers = program_answers or {}
         self.memory = memory
+        self.signal_fn = signal_fn
 
     # ------------------------------------------------------------------ public
 
@@ -219,7 +223,8 @@ class Annotator:
         except ValueError:
             # The server gave no probabilities.  Generation still works.
             return self._free_form(query, prompt)
-        probs = np.exp(self.calibrator.transform(raw)[0])  # type: ignore[attr-defined]
+        extra = self.signal_fn(query.input) if self.signal_fn is not None else None
+        probs = np.exp(self.calibrator.transform(raw, extra)[0])  # type: ignore[attr-defined]
         top = int(np.argmax(probs))
         if self.conformal is not None:
             keep = self.conformal.predict_sets(probs)[0]

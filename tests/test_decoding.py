@@ -187,3 +187,35 @@ def test_majority_vote_ties_go_to_first_and_allowed_filters():
     result = majority_vote(["x", "x", "y"], lambda t: t, allowed=["y"])
     assert result.answer == "y" and result.valid == 1
     assert majority_vote(["", ""], lambda t: t or None).answer is None
+
+
+def test_stacked_calibrator_learns_to_trust_a_useful_signal_and_ignore_noise():
+    from cairn.decoding.calibrate import StackedCalibrator
+
+    rng = np.random.default_rng(3)
+    n = 800
+    y = rng.integers(0, 2, size=n)
+    weak_model = np.stack([rng.normal(0, 1, n), rng.normal(0, 1, n) + 0.3 * y], axis=1)
+    useful = (y + rng.normal(0, 0.3, n))[:, None]  # a strong cheap signal
+    noise = rng.normal(0, 1, (n, 3))  # three useless ones
+    extra = np.hstack([useful, noise])
+    stack = StackedCalibrator().fit(weak_model[:400], y[:400], extra[:400])
+    accuracy = (stack.transform(weak_model[400:], extra[400:]).argmax(1) == y[400:]).mean()
+    assert accuracy > 0.85
+    weight_per_input = np.abs(stack.weights).sum(axis=1)
+    assert weight_per_input[2] > 3 * weight_per_input[3:].max()  # signal >> noise
+    with pytest.raises(ValueError):
+        stack.transform(weak_model[:2], extra[:2, :2])
+
+
+def test_every_calibrator_accepts_extra_signals():
+    from cairn.decoding.calibrate import IdentityCalibrator
+
+    logp, y = _biased_scores()
+    extra = np.zeros((len(y), 2))
+    for calibrator in (
+        IdentityCalibrator(),
+        BatchCalibrator().fit(logp),
+        VectorScaling().fit(logp, y),
+    ):
+        assert calibrator.transform(logp, extra).shape == logp.shape

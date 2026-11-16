@@ -57,3 +57,5 @@ class TaskSpec:
     max_answer_tokens: int = 32
     # Use letter chunks as well as words when searching for similar examples.
     char_features: bool = False
+    # Cheap model-free measurements of an input, fed to the stacked calibrator.
+    signals: Callable[[str], tuple[float, ...]] | None = None

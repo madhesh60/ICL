@@ -90,3 +90,14 @@ def test_numbers_cost_one_token_per_digit(counter):
 def test_get_counter_falls_back_when_path_is_wrong(tmp_path):
     counter = get_counter(tmp_path / "no-such-model")
     assert counter.name in {"tiktoken-qwen", "heuristic"}
+
+
+@pytest.mark.data
+def test_task6_overlap_signal_separates_the_labels(task_loader):
+    """The data insight behind the task-6 signal, kept as a regression test."""
+    from cairn.tasks.signals import sentence_pair_overlap
+
+    task = task_loader(6)
+    yes = [sentence_pair_overlap(e.input)[0] for e in task.examples[:2000] if e.output == "Y"]
+    no = [sentence_pair_overlap(e.input)[0] for e in task.examples[:2000] if e.output == "N"]
+    assert sum(yes) / len(yes) > 3 * sum(no) / len(no)

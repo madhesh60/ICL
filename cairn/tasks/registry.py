@@ -20,6 +20,7 @@ from cairn.decoding.parse import (
     norm_trivia,
 )
 from cairn.tasks.base import TaskSpec, View
+from cairn.tasks.signals import sentence_pair_overlap
 
 _T2 = re.compile(r"^Sentence: '(.*)'\. Count the number of (nouns|verbs) in this sentence\.$", re.S)
 _T6 = re.compile(r"^Sentence 1: (.*?)\s*Sentence 2: (.*?)\s*Genre: (.*?)\.?$", re.S)
@@ -126,6 +127,7 @@ TASKS: dict[int, TaskSpec] = {
         normalize=norm_text,
         answer_rule="Reply with exactly Y or N and nothing else.",
         max_answer_tokens=4,
+        signals=sentence_pair_overlap,
     ),
     7: TaskSpec(
         task_id=7,

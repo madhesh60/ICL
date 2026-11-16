@@ -339,3 +339,15 @@ def test_reports_are_json_serialisable(counter):
     report, predictions = runner.evaluate("dev", limit=10)
     json.dumps({"eval": report.to_json(), "notes": runner.notes, "usage": runner.meter.summary(),
                 "p": [p.to_json() for p in predictions]})  # fmt: skip
+
+
+def test_runner_stack_mode_uses_signals_at_fit_and_predict_time(counter):
+    pool = make_sentiment_pool(1500)
+    task = TaskData(5, "toy", "sad?", tuple(pool), ())
+    config = RunConfig(context=CTX, calib_limit=120, workers=2,
+                       strategy=StrategyConfig(calibration="stack"))  # fmt: skip
+    runner = TaskRunner(task, DemoReaderBackend(noise=0.3, seed=4), counter, config)
+    report, _ = runner.evaluate("dev", limit=40)
+    assert runner.notes["calibration"]["method"] == "stack"
+    assert runner.signal_fn is not None and runner.signal_fn("lonely tears").shape == (2,)
+    assert report.accuracy > 0.6
