@@ -1,0 +1,40 @@
+# FlagScale serve config for Cairn.
+# Start:  cd FlagScale && python run.py --config-path <this folder> --config-name flagscale_qwen3_4b action=run
+#
+# This is the organisers' llm_config.yaml with three changes (engine_args are passed to vLLM):
+#   1. prefix caching ON   (the baseline switched it off with no_enable_prefix_caching)
+#   2. max_model_len set   (room for the long example block)
+#   3. reasoning parser    (thinking text separated from the answer)
+serve:
+- serve_id: vllm_model
+  engine: vllm
+  engine_args:
+    model: ../Qwen3-4B
+    served_model_name: Qwen3-4B
+    host: 0.0.0.0
+    uvicorn_log_level: warning
+    port: 2026
+    gpu_memory_utilization: 0.92
+    trust_remote_code: true
+    enable_prefix_caching: true
+    max_model_len: 65536
+    reasoning_parser: qwen3
+
+experiment:
+  exp_name: qwen3_4b_cairn
+  exp_dir: outputs/${experiment.exp_name}
+  task:
+    type: serve
+  runner:
+    hostfile: null
+    deploy:
+      use_fs_serve: false
+  envs:
+    CUDA_VISIBLE_DEVICES: 0
+    CUDA_DEVICE_MAX_CONNECTIONS: 1
+
+action: run
+
+hydra:
+  run:
+    dir: ${experiment.exp_dir}/hydra

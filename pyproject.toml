@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cairn-icl"
+version = "0.1.0"
+description = "Cairn: a long-context in-context-learning annotation engine for small LLMs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Exact Qwen token counts without downloading the model (uses the vocabulary file in this repo).
+tokens = ["tiktoken>=0.7"]
+# Exact counts from the real Hugging Face tokenizer, if you have the model folder locally.
+hf = ["transformers>=4.51"]
+dev = ["pytest>=8.0", "ruff>=0.6", "tiktoken>=0.7"]
+
+[project.scripts]
+cairn = "cairn.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cairn*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "data: needs the 8 competition data files",
+    "triton: needs torch + triton installed (runs kernels on CPU in interpreter mode)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",    # line length is handled by the formatter
+    "RUF001",  # we deliberately use a few non-ASCII characters in prompts
+    "RUF002",
+    "RUF003",
+]

@@ -1,0 +1,14 @@
+# Dry run without any model server.  The "demo-reader" stand-in answers from the nearest
+# examples in the prompt.  Use it to check that everything is wired up; its accuracy says
+# nothing about Qwen3-4B.
+backend:
+  kind: demo-reader
+
+defaults:
+  workers: 4
+  strategy:
+    use_program: false       # the stand-in cannot write programs
+    codegen_execute: false
+
+tasks:
+  8: { context: { n_clusters: 2, tail_k: 3 } }

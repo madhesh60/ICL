@@ -1,0 +1,56 @@
+# Cairn settings.  Every key is checked at start-up: a typo is an error, not a silent no-op.
+# Run with:  cairn --config configs/default.yaml <command>
+
+backend:
+  kind: openai                         # any OpenAI-style server: vLLM, FlagScale, llama.cpp ...
+  base_url: http://127.0.0.1:2026/v1
+  model: Qwen3-4B
+  structured_api: structured_outputs   # vLLM >= 0.12.  Older vLLM: guided.  No support: none.
+  thinking_control: true               # send chat_template_kwargs.enable_thinking
+  timeout_s: 600
+  max_attempts: 5
+  response_cache: true                 # keep answers on disk; reruns and resumes are free
+
+defaults:
+  workers: 8
+  split_seed: 42
+  calib_limit: 300
+  splits:
+    calib: 300        # fits calibration + conformal threshold, verifies induced programs
+    dev: 300          # compares strategies; never appears in a prompt
+    holdout: 200      # touched once, at the very end
+  context:
+    selection: coverage         # coverage | random | first
+    coverage_target: queries    # cover what the inputs we must label look like
+    label_balance: 0.5          # 0 = natural label shares, 1 = equal shares
+    bulk_order: interleave      # no long runs of one label
+    n_clusters: 1               # prompt beginnings per task (1 = maximum cache reuse)
+    global_frac: 0.5            # with clusters: share of examples common to all of them
+    tail_k: 12                  # nearest examples placed right before the input
+    tail_per_label: 2           # ...including the nearest of every label
+    tail_as_turns: true         # nearest examples as real chat turns
+    restate_rule: true          # repeat the output rule right before the input
+  strategy:
+    use_program: true           # exact tasks: model writes a program, we verify it
+    use_scoring: true           # classification: read label probabilities
+    calibration: vector         # none | batch | vector
+    conformal_alpha: 0.1        # allowed miss rate of the "plausible labels" set
+    escalate: true              # unsure -> think + vote
+    vote_n: 5
+    think_max_tokens: 1024
+    think_temperature: 0.6      # Qwen3's recommended sampling for thinking mode
+    cheap_samples: 3
+    agree_share: 0.67
+    induce_guidelines: false    # turn on per task after `cairn tune` says it helps
+
+tasks:
+  1: { context: { tail_k: 8 } }
+  2: { strategy: { think_max_tokens: 768 } }
+  3: { context: { tail_k: 8 } }
+  4: { context: { tail_k: 8 } }
+  7:
+    context: { n_clusters: 4, tail_k: 16 }      # trivia: topic-specific examples help the tail
+  8:
+    workers: 4
+    context: { n_clusters: 4, tail_k: 3 }       # kernels are long; 3 nearest ones is plenty
+    strategy: { codegen_rounds: 3, codegen_candidates: 2, codegen_execute: true }

@@ -28,3 +28,10 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Cairn run outputs
+runs/
+*.sqlite
+submission*.zip
+.pytest_cache/
+.ruff_cache/
