@@ -2,6 +2,10 @@
 
 > Written 2026-11-14. Everything here was verified by reading the repo and the data files.
 > Things that could NOT be verified are marked **[UNVERIFIED]**.
+>
+> **Update 2026-11-16:** this describes the repository *before* Cairn was added. The new
+> solution lives in `cairn/` (see the root `README.md`); `AGENTS.md` now holds the challenge
+> text; the baseline's format losses were re-measured in `docs/results/offline_benchmarks.md`.
 
 ---
 

@@ -3,6 +3,31 @@
 > Companion to `01_CODEBASE_EXPLAINED.md` (what exists) and `03_RESEARCH_NOTEBOOK.md` (thinking space).
 > This file is the *execution* plan. Update the checkboxes as we go.
 
+## Status (November 2026)
+
+The planned `solution/` package was built as **`cairn/`** (see the root `README.md`).
+Everything that does not need a GPU is done and tested (137 tests); the measured numbers
+are in `docs/results/offline_benchmarks.md`. What remains needs a Linux GPU box:
+`bash scripts/gpu_run.sh` (or `STAGE=dev` to stop after the dev score).
+
+| plan item | status | where |
+|---|---|---|
+| data loader, seeded leak-free splits, token counting | done | `cairn/data.py`, `cairn/tokens.py` |
+| BM25 retrieval (no extra model) | done | `cairn/retrieval/` |
+| context builder ≥ 30K, shared prefix + kNN tail | done, plus query-aware coverage selection, label interleaving, optional clusters | `cairn/context/builder.py`, `cairn/selection/` |
+| chat template + thinking control + constrained decoding + strict parser (0 nulls) | done | `cairn/llm/openai_compat.py`, `cairn/decoding/` |
+| logprob scoring + calibration (tasks 2, 5, 6) | done, plus stacked calibration and conformal escalation | `cairn/decoding/` |
+| program induction + verification (tasks 1, 3, 4) | done, with a hidden confirm set and a sandbox | `cairn/induction/` |
+| guideline induction | done, kept only if a paired test says it does not hurt | `cairn/induction/guideline.py` |
+| self-consistency voting (2, 7, 8) | done | `cairn/decoding/vote.py` |
+| task 8: signature lock, static check, compile/run, repair loop | done; runs on CPU via Triton interpreter mode | `cairn/tasks/kernel*.py` |
+| everything logged, resumable runs | done: journal, response cache, run reports, settings fingerprint | `cairn/pipeline/`, `cairn/cli.py` |
+| submission zip in the official format | done, with validation | `cairn/submit.py` |
+| **real Qwen3-4B runs, ablations, context-length sweep** | **open — needs a GPU** | `cairn run`, `cairn tune` |
+
+New since the plan: the task-6 data finding (sentence overlap alone gives 93–95% on dev,
+see the learning guide §8), and the measured 32% format loss of the official baseline.
+
 ---
 
 ## 1. Reframing the problem correctly

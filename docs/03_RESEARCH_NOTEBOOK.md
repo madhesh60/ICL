@@ -161,3 +161,30 @@ Rules for the log: one change per row; record the seed; keep the raw outputs und
 - Q5 Is any auxiliary non-LLM model (BM25 is not a model; TF-IDF is not; a POS tagger would be) allowed at inference time? Assume no.
 - Q6 Must the 30K be *demonstrations only*, or does the instruction text count toward it? Assume demonstrations only; be safe.
 - Q7 Deadline / round.
+
+---
+
+## H. Results so far (offline, 2026-11-16)
+
+- **R1 (H1 partly confirmed, offline):** the baseline loses 32% of answers to null or
+  impossible output; task 8 loses 100% (its parser drops answers ≥ 100 characters).
+- **R2 (new):** task 6's label is "was sentence 2 written from sentence 1" (MNLI origin).
+  Content-word overlap: mean 0.49 for Y vs 0.12 for N; threshold alone 93% on dev; stacked
+  with the kNN vote 94.7%. kNN vote alone is *below* majority (58.0% vs 64.3%), which is what
+  pointed to the wrong notion of similarity.
+- **R3 (H3 support):** the file-order shared block of task 6 has an 18-long "N" streak;
+  interleaving brings it to 7.
+- **R4:** query-aware coverage lifts example coverage strongly on task 2 (0.75 → 0.96),
+  task 6 (0.59 → 0.73), task 7 (0.78 → 0.86). Proxy only; needs a model run to price it.
+- **R5:** with clusters, send order matters more than anything else for prefix reuse
+  (0.20M vs 1.62M tokens read). With one shared beginning it does not matter.
+- **R6:** one example kernel in the dataset calls `tl.cidv` (typo); the dataset is not
+  perfectly clean, so never treat examples as ground truth for API names.
+
+## I. Next ideas (not built)
+
+- **I20** Task 2 signal hunt: are there cheap surface cues (word endings, auxiliaries) that
+  separate verb counts 0/1/2? Measure before building.
+- **I21** Context-length sweep with the real model: 30K vs 45K vs 60K on tasks 5/6/7 (H4).
+- **I22** Use the conformal set size as a per-input routing signal for *where* the
+  per-input tail should come from (same-label neighbours vs diverse neighbours).
