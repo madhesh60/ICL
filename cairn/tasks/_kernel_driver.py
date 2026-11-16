@@ -94,7 +94,7 @@ SCALARS = {
     "output_size": [2], "start_dim": [0], "end_dim": [-1], "keepdim": [False], "num_groups": [1],
     "size": [(6, 10)], "shape": [(60,), (10, 6)], "sorted": [True], "upper": [False],
     "source": [0], "destination": [1], "offset": [0], "steps": [5], "decimals": [1],
-    "training": [False], "inplace": [False],
+    "training": [False], "inplace": [False], "normalized_shape": [10], "num_features": [10],
 }  # fmt: skip
 INDEX_NAMES = {"index", "indices", "idx", "target", "labels"}
 

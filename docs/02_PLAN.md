@@ -6,7 +6,7 @@
 ## Status (November 2026)
 
 The planned `solution/` package was built as **`cairn/`** (see the root `README.md`).
-Everything that does not need a GPU is done and tested (137 tests); the measured numbers
+Everything that does not need a GPU is done and tested (140 tests); the measured numbers
 are in `docs/results/offline_benchmarks.md`. What remains needs a Linux GPU box:
 `bash scripts/gpu_run.sh` (or `STAGE=dev` to stop after the dev score).
 

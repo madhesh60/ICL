@@ -49,6 +49,7 @@ class TuneResult:
     # Paired test of the winner against the runner-up on the largest shared sample.
     runner_up: str | None = None
     p_value: float | None = None
+    compared_on: int = 0  # examples both labelled
 
     def table(self) -> str:
         lines = ["| setting | examples seen | accuracy | model calls |", "|---|---|---|---|"]
@@ -105,10 +106,18 @@ def successive_halving(
 
     winner = scored[0][2]
     result = TuneResult(winner=winner, trials=trials)
-    if len(scored) > 1:
-        second = scored[1][2]
-        first_hits, second_hits = trials[winner].final.hits, trials[second].final.hits  # type: ignore[union-attr]
-        if len(first_hits) == len(second_hits):
-            result.runner_up = second
-            result.p_value = mcnemar_exact(second_hits, first_hits)[2]
+    # Runner-up: the candidate that survived longest after the winner, best accuracy first.
+    ranked = sorted(
+        (t for t in trials.values() if t.name != winner and t.final is not None),
+        key=lambda t: (-len(t.rounds), -t.final.accuracy, t.calls),  # type: ignore[union-attr]
+    )
+    if ranked:
+        second = ranked[0].name
+        first_hits = trials[winner].final.hits  # type: ignore[union-attr]
+        second_hits = trials[second].final.hits  # type: ignore[union-attr]
+        # Both labelled the same first examples of `dev`, so compare them on that shared part.
+        shared = min(len(first_hits), len(second_hits))
+        result.runner_up = second
+        result.p_value = mcnemar_exact(second_hits[:shared], first_hits[:shared])[2]
+        result.compared_on = shared
     return result

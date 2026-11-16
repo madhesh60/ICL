@@ -747,6 +747,9 @@ So even +8 points on 100 inputs is not convincing evidence. Get more data before
 | Exact-match accuracy for code was always 0% | code has no single right string | choose the metric to fit the output; task 8 now reports static OK / runs / matches PyTorch |
 | The baseline loses 100% of code answers | its parser drops answers longer than 100 characters | read the failure *distribution*, not only the average |
 | A formatter spread a word list over 50 lines | a style tool's automatic fix | read automated changes like a teammate's changes |
+| The sandbox set its limits with `preexec_fn` | found in review: Python's docs warn it can deadlock in programs that use threads | read the warnings section of the docs for every system call you use; the fix was to let the child set its own limits |
+| The CPU-limit test reported "crashed: no output" | soft and hard CPU limits were equal, so the system sent SIGKILL instead of the CPU-limit signal | an error message is a feature: test that each failure says what really happened |
+| The tuner never printed its "is the winner really better?" test | by the last round the runner-up had been dropped, so there was no second entry to compare | test the output a user will read, not just the internal values |
 
 **Remember:** keep a list like this; it becomes your personal rulebook.
 

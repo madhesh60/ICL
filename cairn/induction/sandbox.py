@@ -10,7 +10,8 @@ airbag and a speed limit:
     2. Run in a separate process, never inside our own.  If it crashes or
        hangs, we kill that process and ours carries on.
     3. Hard limits set by the operating system: CPU seconds, memory, file
-       size, plus a wall-clock timeout and a per-call timeout.
+       size, plus a wall-clock timeout and a per-call timeout.  The child sets
+       them on itself before it loads the candidate code.
 
 This is solid protection against accidents and lazy attacks.  It is not a
 vault: for code from strangers at scale, add a container or a jail (Docker,
@@ -49,6 +50,16 @@ def _timeout(signum, frame):
     raise TimeoutError("call took too long")
 
 job = json.loads(sys.stdin.read())
+try:  # operating-system limits, set before any candidate code exists (POSIX only)
+    import resource
+    memory = job["memory_mb"] * 1024 * 1024
+    # Soft limit first (sends SIGXCPU, a clear "CPU limit" signal), hard limit 1 s later (SIGKILL).
+    resource.setrlimit(resource.RLIMIT_CPU, (job["cpu_s"], job["cpu_s"] + 1))
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+except ImportError:
+    pass  # Windows has no `resource`; the wall-clock and per-call timeouts still apply
 real_stdout = sys.stdout
 sys.stdout = io.StringIO()          # swallow prints from the tested code
 results = []
@@ -113,19 +124,6 @@ def check_source(code: str, required_function: str = "solve") -> list[str]:
     return sorted(set(problems))
 
 
-def _limit_resources(limits: SandboxLimits):  # pragma: no cover - runs in the child process
-    def apply() -> None:
-        import resource
-
-        memory = limits.memory_mb * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_CPU, (limits.cpu_s, limits.cpu_s))
-        resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-
-    return apply
-
-
 def run_function(
     code: str,
     inputs: Sequence[str],
@@ -145,7 +143,14 @@ def run_function(
     if not inputs:
         return []
     job = json.dumps(
-        {"code": code, "func": function, "inputs": list(inputs), "per_call_s": limits.per_call_s}
+        {
+            "code": code,
+            "func": function,
+            "inputs": list(inputs),
+            "per_call_s": limits.per_call_s,
+            "cpu_s": limits.cpu_s,
+            "memory_mb": limits.memory_mb,
+        }
     )
     with tempfile.TemporaryDirectory(prefix="cairn-sandbox-") as workdir:
         driver = Path(workdir) / "driver.py"
@@ -161,7 +166,8 @@ def run_function(
                 timeout=limits.wall_s,
                 cwd=workdir,
                 env={},
-                preexec_fn=_limit_resources(limits) if sys.platform != "win32" else None,
+                # No preexec_fn: it is unsafe in programs that use threads (Cairn does).
+                # The driver applies the limits itself as its first step instead.
             )
         except subprocess.TimeoutExpired:
             return [CallResult(ok=False, error="timeout: the program ran too long")] * len(inputs)
@@ -172,5 +178,13 @@ def run_function(
                 CallResult(ok=bool(r["ok"]), value=r.get("value", ""), error=r.get("error", ""))
                 for r in rows
             ]
-    reason = (done.stderr or "no output").strip().splitlines()[-1][:300]
+    if done.returncode < 0:
+        # Killed by a signal: SIGXCPU (24) is the CPU-seconds limit, SIGKILL (9) usually memory.
+        signal_no = -done.returncode
+        why = {24: "CPU time limit", 9: "killed (often the memory limit)"}.get(
+            signal_no, "a signal"
+        )
+        return [CallResult(ok=False, error=f"stopped by the operating system: {why}")] * len(inputs)
+    lines = (done.stderr or "").strip().splitlines()
+    reason = lines[-1][:300] if lines else f"no output (exit code {done.returncode})"
     return [CallResult(ok=False, error=f"crashed: {reason}")] * len(inputs)

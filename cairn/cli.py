@@ -319,7 +319,11 @@ def cmd_tune(args: argparse.Namespace, app: AppConfig) -> int:
         )
         print(f"\ntask {task_id}: winner = {result.winner}")
         if result.runner_up is not None:
-            print(f"paired test against runner-up '{result.runner_up}': p = {result.p_value:.3f}")
+            print(
+                f"paired test against runner-up '{result.runner_up}' on the "
+                f"{result.compared_on} examples both labelled: p = {result.p_value:.3f} "
+                "(below 0.05 = the difference is unlikely to be luck)"
+            )
         print(result.table())
     return 0
 

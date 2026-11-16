@@ -90,3 +90,11 @@ def test_guideline_inducer_maps_then_reduces():
     assert rules == "- compound nouns count once\n- gerunds are verbs"
     assert backend.calls == 4  # three batches + one merge
     assert GuidelineInducer(FunctionBackend(lambda r: "nothing useful")).induce("d", ["x"]) == ""
+
+
+def test_cpu_limit_is_reported_clearly():
+    limits = SandboxLimits(cpu_s=1, per_call_s=60, wall_s=20)
+    result = run_function(
+        "def solve(t):\n    n = 0\n    while True:\n        n += 1", ["a"], limits=limits
+    )
+    assert "CPU time limit" in result[0].error

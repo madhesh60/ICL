@@ -152,6 +152,7 @@ def test_successive_halving_picks_the_better_setting(counter):
     assert result.winner == "good"
     assert len(result.trials["very-noisy"].rounds) == 1  # dropped after the first round
     assert "| good **(winner)**" in result.table()
+    assert result.runner_up == "noisy" and result.compared_on == 20 and result.p_value is not None
 
 
 # -------------------------------------------------------------------- cli
@@ -187,3 +188,29 @@ def test_cli_refuses_to_resume_with_different_settings(tmp_path):
     with pytest.raises(SystemExit, match="different settings"):
         main(["--config", str(other), *base])
     assert main(["--config", str(other), *base, "--fresh"]) == 0
+
+
+def test_doctor_reports_each_feature_against_a_fake_server():
+    from cairn.doctor import run_checks
+    from cairn.llm import OpenAICompatBackend, RetryPolicy
+    from tests.fake_server import FakeLLMServer
+
+    with FakeLLMServer() as server:
+        backend = OpenAICompatBackend(server.base_url, retry=RetryPolicy(max_attempts=1))
+        checks = {c.name: c for c in run_checks(backend)}
+    assert checks["server reachable"].ok
+    assert checks["token probabilities (logprobs)"].ok
+    assert checks["constrained answers (structured outputs)"].ok
+    assert checks["thinking mode"].ok
+    assert checks["prefix cache"].ok  # the fake server reports cached tokens
+
+
+def test_doctor_explains_an_unreachable_server():
+    from cairn.doctor import run_checks
+    from cairn.llm import OpenAICompatBackend, RetryPolicy
+
+    backend = OpenAICompatBackend(
+        "http://127.0.0.1:9/v1", retry=RetryPolicy(max_attempts=1), timeout_s=1
+    )
+    checks = run_checks(backend)
+    assert len(checks) == 1 and not checks[0].ok and "base_url" in checks[0].advice
