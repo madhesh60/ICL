@@ -57,7 +57,9 @@ def evaluate(predictions: Sequence[Prediction], queries: Sequence[Query]) -> Eva
     for prediction in predictions:
         answer = gold.get(prediction.query_id)
         if answer is None:
-            raise ValueError(f"no gold answer for {prediction.query_id}; evaluate needs labelled queries")
+            raise ValueError(
+                f"no gold answer for {prediction.query_id}; evaluate needs labelled queries"
+            )
         hit = is_correct(prediction.answer, answer)
         hits.append(hit)
         confidence.append(prediction.confidence)
@@ -72,7 +74,11 @@ def evaluate(predictions: Sequence[Prediction], queries: Sequence[Query]) -> Eva
         ci_high=high,
         ece=expected_calibration_error(confidence, hits),
         by_source={
-            source: {"n": len(h), "share": round(len(h) / n, 4), "accuracy": round(sum(h) / len(h), 4)}
+            source: {
+                "n": len(h),
+                "share": round(len(h) / n, 4),
+                "accuracy": round(sum(h) / len(h), 4),
+            }
             for source, h in sorted(per_source.items())
         },
         hits=hits,

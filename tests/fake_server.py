@@ -62,7 +62,7 @@ class FakeLLMServer:
             cached = 0
             for old in self._seen_prefixes:
                 shared = 0
-                for a, b in zip(prompt, old):
+                for a, b in zip(prompt, old, strict=False):
                     if a != b:
                         break
                     shared += 1

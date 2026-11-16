@@ -176,7 +176,9 @@ class Annotator:
         )
         return [self._clean(text) for text in self.backend.generate(request).texts]
 
-    def _think_vote(self, prompt: BuiltPrompt, allowed: tuple[str, ...] | None = None) -> VoteResult:
+    def _think_vote(
+        self, prompt: BuiltPrompt, allowed: tuple[str, ...] | None = None
+    ) -> VoteResult:
         """Several reasoned answers, then a vote."""
         cfg = self.config
         request = GenRequest.from_messages(
@@ -243,7 +245,9 @@ class Annotator:
         if not reason_first:
             replies.extend(a for a in self._direct(prompt) if a is not None)
             if cfg.escalate and cfg.cheap_samples > 0:
-                cheap = self._direct(prompt, n=cfg.cheap_samples, temperature=0.7, tag="generate_sample")
+                cheap = self._direct(
+                    prompt, n=cfg.cheap_samples, temperature=0.7, tag="generate_sample"
+                )
                 replies.extend(a for a in cheap if a is not None)
             vote = majority_vote(replies, lambda a: a)
             meta["votes"] = vote.counts
@@ -277,7 +281,9 @@ class Annotator:
         if self.config.codegen_execute and signature is not None:
             report = execute_kernel(code, signature)
         if report is None or report.status in {"unavailable", "no_valid_inputs", "timeout"}:
-            return _Candidate(code, 2, static.score, feedback, report.status if report else "not_run")
+            return _Candidate(
+                code, 2, static.score, feedback, report.status if report else "not_run"
+            )
         if report.status == "exec_ok":
             return _Candidate(code, 4, static.score, feedback, report.status)
         if report.status == "called_no_reference":
@@ -324,12 +330,17 @@ class Annotator:
                 if not code:
                     continue
                 candidate = self._judge(code, signature)
-                if best is None or (candidate.tier, candidate.static_score) > (best.tier, best.static_score):
+                if best is None or (candidate.tier, candidate.static_score) > (
+                    best.tier,
+                    best.static_score,
+                ):
                     best = candidate
             if best is not None and (best.tier >= 3 or not best.feedback):
                 break  # proven to run, or nothing left that we could ask the model to fix
             if best is None:
-                extra = (("user", "No Python code block was found. Reply with one complete code block."),)
+                extra = (
+                    ("user", "No Python code block was found. Reply with one complete code block."),
+                )
             else:
                 listing = "\n".join(f"- {line}" for line in best.feedback)
                 extra = (
@@ -342,7 +353,12 @@ class Annotator:
                 )
         if best is None:
             return self._fallback(query, "no code produced")
-        meta.update(rounds=rounds_used, tier=best.tier, exec_status=best.exec_status, open_issues=best.feedback)
+        meta.update(
+            rounds=rounds_used,
+            tier=best.tier,
+            exec_status=best.exec_status,
+            open_issues=best.feedback,
+        )
         return Prediction(query.id, best.code, _TIER_CONFIDENCE[best.tier], "codegen", meta)
 
     # ---------------------------------------------------------------- fallback

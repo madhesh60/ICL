@@ -117,7 +117,9 @@ SHAPES = {
 
 
 def make_tensor(shape, positive):
-    values = torch.rand(shape, device=DEVICE) + 0.5 if positive else torch.randn(shape, device=DEVICE)
+    values = (
+        torch.rand(shape, device=DEVICE) + 0.5 if positive else torch.randn(shape, device=DEVICE)
+    )
     return values.to(torch.float32)
 
 
@@ -125,7 +127,9 @@ def argument_guesses(params):
     """Yield (args, kwargs, description) guesses for the required parameters."""
     required = [p for p in params if p["kind"] == "positional" and p["default"] is None]
     star = next((p for p in params if p["kind"] == "var_positional"), None)
-    tensor_slots = [p["name"] for p in required if p["name"] not in SCALARS and p["name"] not in INDEX_NAMES]
+    tensor_slots = [
+        p["name"] for p in required if p["name"] not in SCALARS and p["name"] not in INDEX_NAMES
+    ]
     n_tensors = len(tensor_slots) + (2 if star else 0)
     shape_sets = SHAPES.get(n_tensors) or [tuple((6, 10) for _ in range(n_tensors))]
     scalar_slots = [p["name"] for p in required if p["name"] in SCALARS]
@@ -134,7 +138,7 @@ def argument_guesses(params):
         for positive in (False, True):
             for scalars in scalar_sets:
                 tensors = iter(make_tensor(s, positive) for s in shapes)
-                chosen = dict(zip(scalar_slots, scalars))
+                chosen = dict(zip(scalar_slots, scalars, strict=True))
                 args = []
                 for p in required:
                     if p["name"] in chosen:
@@ -161,7 +165,7 @@ def compare(got, expected):
     got, expected = as_list(got), as_list(expected)
     if len(got) != len(expected):
         return f"returned {len(got)} values, expected {len(expected)}"
-    for i, (g, e) in enumerate(zip(got, expected)):
+    for i, (g, e) in enumerate(zip(got, expected, strict=True)):
         if not isinstance(g, torch.Tensor):
             return f"output {i} is {type(g).__name__}, expected a Tensor"
         if tuple(g.shape) != tuple(e.shape):

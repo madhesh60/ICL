@@ -49,7 +49,9 @@ def validate_task_file(path: Path | str, task: TaskData) -> list[str]:
                 row = json.loads(line)
                 sample_id, prediction = row["test_sample_id"], row["prediction"]
             except (json.JSONDecodeError, KeyError, TypeError):
-                problems.append(f"line {number}: not a JSON object with test_sample_id and prediction")
+                problems.append(
+                    f"line {number}: not a JSON object with test_sample_id and prediction"
+                )
                 continue
             if sample_id in seen:
                 problems.append(f"line {number}: duplicate id {sample_id}")
@@ -72,7 +74,9 @@ def build_zip(run_dir: Path | str, out: Path | str, data_dir: Path | str | None 
     for task_id in range(1, 9):
         path = run_dir / f"task{task_id}" / f"openseek-{task_id}.jsonl"
         if not path.exists():
-            problems.append(f"task {task_id}: {path} is missing (run `cairn run --task {task_id} --split test`)")
+            problems.append(
+                f"task {task_id}: {path} is missing (run `cairn run --task {task_id} --split test`)"
+            )
             continue
         issues = validate_task_file(path, load_task(task_id, data_dir))
         problems.extend(f"task {task_id}: {issue}" for issue in issues[:5])

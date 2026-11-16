@@ -79,7 +79,9 @@ class GuidelineInducer:
             if not chunk:
                 break
             try:
-                rules = _rules_only(self._ask(system, "".join(chunk) + _MAP_ASK, "induce_rules_map"), 6)
+                rules = _rules_only(
+                    self._ask(system, "".join(chunk) + _MAP_ASK, "induce_rules_map"), 6
+                )
             except LLMError as err:
                 log.warning("guideline induction: a batch failed (%s)", err)
                 continue

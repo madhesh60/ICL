@@ -41,7 +41,9 @@ def pytest_collection_modifyitems(config, items):
         if "data" in item.keywords and not HAVE_DATA:
             item.add_marker(pytest.mark.skip(reason="competition data files not found"))
         if "triton" in item.keywords and TRITON_PYTHON is None:
-            item.add_marker(pytest.mark.skip(reason="torch + triton not installed (set CAIRN_TRITON_PYTHON)"))
+            item.add_marker(
+                pytest.mark.skip(reason="torch + triton not installed (set CAIRN_TRITON_PYTHON)")
+            )
 
 
 @pytest.fixture(scope="session")
@@ -83,7 +85,14 @@ def make_sentiment_pool(n: int = 400) -> list[Example]:
         positive = i % 3 != 0  # 2/3 positive: an unbalanced pool on purpose
         words = happy if positive else sad
         text = " ".join(
-            [filler[i % 10], words[i % 8], filler[(i * 7) % 10], words[(i * 3) % 8], filler[(i * 3) % 10], f"t{i}"]
+            [
+                filler[i % 10],
+                words[i % 8],
+                filler[(i * 7) % 10],
+                words[(i * 3) % 8],
+                filler[(i * 3) % 10],
+                f"t{i}",
+            ]
         )
         pool.append(Example(f"ex{i}", text, "Not sad" if positive else "Sad"))
     return pool

@@ -56,7 +56,9 @@ class UsageMeter:
                     "cache_file_hits": s.cache_file_hits,
                     "prompt_tokens": s.prompt_tokens,
                     "cached_tokens": s.cached_tokens,
-                    "kv_cache_share": round(s.cached_tokens / s.prompt_tokens, 4) if s.prompt_tokens else 0.0,
+                    "kv_cache_share": round(s.cached_tokens / s.prompt_tokens, 4)
+                    if s.prompt_tokens
+                    else 0.0,
                     "completion_tokens": s.completion_tokens,
                     "seconds": round(s.seconds, 2),
                 }

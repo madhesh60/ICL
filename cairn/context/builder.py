@@ -189,12 +189,16 @@ class ContextBuilder:
         self.n_clusters = n_clusters
 
         target_cluster = (
-            self._route_features(target_feats) if n_clusters > 1 else np.zeros(len(target_feats), int)
+            self._route_features(target_feats)
+            if n_clusters > 1
+            else np.zeros(len(target_feats), int)
         )
         global_frac = 1.0 if n_clusters == 1 else float(np.clip(self.config.global_frac, 0.0, 1.0))
-        global_budget = int(round(self._budget * global_frac))
+        global_budget = round(self._budget * global_frac)
         self._global: list[int] = (
-            self._select(global_budget, self._weights(target_feats), already=()) if global_budget else []
+            self._select(global_budget, self._weights(target_feats), already=())
+            if global_budget
+            else []
         )
         global_tokens = sum(self._costs[i] for i in self._global)
         self._cluster_blocks: list[list[int]] = []
@@ -213,9 +217,7 @@ class ContextBuilder:
         self._bulk_ids: list[set[str]] = []
         for c in range(n_clusters):
             chosen = self._global + self._cluster_blocks[c]
-            self._bulk_text.append(
-                render.BULK_HEADING + "".join(self._rendered[i] for i in chosen)
-            )
+            self._bulk_text.append(render.BULK_HEADING + "".join(self._rendered[i] for i in chosen))
             self._bulk_tokens.append(sum(self._costs[i] for i in chosen))
             self._bulk_ids.append({self.pool[i].id for i in chosen})
         self._overhead = counter.count(self._system) + counter.count(render.BULK_HEADING) + 24
@@ -335,7 +337,11 @@ class ContextBuilder:
         ranked = [(i, s) for i, s in ranked if s > 0] or ranked[: cfg.tail_k]
         if cfg.tail_mmr < 1.0 and self._vectors is not None and len(ranked) > cfg.tail_k:
             picked = mmr_select(
-                [i for i, _ in ranked], [s for _, s in ranked], self._vectors, cfg.tail_k, cfg.tail_mmr
+                [i for i, _ in ranked],
+                [s for _, s in ranked],
+                self._vectors,
+                cfg.tail_k,
+                cfg.tail_mmr,
             )
             score = dict(ranked)
             chosen = [(i, score[i]) for i in picked]
@@ -400,7 +406,9 @@ class ContextBuilder:
 
         session_text = ""
         if session:
-            session_text = render.SESSION_HEADING + "".join(render.render_demo(spec, e) for e in session)
+            session_text = render.SESSION_HEADING + "".join(
+                render.render_demo(spec, e) for e in session
+            )
         session_tokens = self.counter.count(session_text) if session_text else 0
 
         reminder = f"{spec.answer_rule}\n\n" if cfg.restate_rule else ""
@@ -413,8 +421,12 @@ class ContextBuilder:
             pending = head + render.TURNS_BRIDGE
             for i in tail:
                 example = self.pool[i]
-                messages.append({"role": "user", "content": pending + render.render_input(example.input)})
-                messages.append({"role": "assistant", "content": render.render_output(spec, example.output)})
+                messages.append(
+                    {"role": "user", "content": pending + render.render_input(example.input)}
+                )
+                messages.append(
+                    {"role": "assistant", "content": render.render_output(spec, example.output)}
+                )
                 pending = ""
             messages.append({"role": "user", "content": pending + reminder + query_text})
         else:
@@ -429,7 +441,9 @@ class ContextBuilder:
             )
 
         tail_tokens = sum(self._costs[i] for i in tail)
-        new_in_tail = sum(self._costs[i] for i in tail if self.pool[i].id not in self._bulk_ids[cluster])
+        new_in_tail = sum(
+            self._costs[i] for i in tail if self.pool[i].id not in self._bulk_ids[cluster]
+        )
         bulk_tokens = self._bulk_tokens[cluster]
         per_turn = 8 * len(tail) if cfg.tail_as_turns else 0
         stats = ContextStats(

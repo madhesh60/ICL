@@ -154,7 +154,9 @@ def get_counter(tokenizer_path: Path | str | None = None) -> TokenCounter:
             log.info("token counter: exact Hugging Face tokenizer at %s", path)
             return counter
         except Exception as err:  # missing package, missing files, bad folder
-            log.warning("could not load tokenizer at %s (%s); trying the bundled vocabulary", path, err)
+            log.warning(
+                "could not load tokenizer at %s (%s); trying the bundled vocabulary", path, err
+            )
     vocab = Path(os.environ.get("CAIRN_QWEN_VOCAB", DEFAULT_VOCAB))
     try:
         counter = TiktokenQwenCounter(vocab)

@@ -146,7 +146,9 @@ class OpenAICompatBackend:
             self._breaker.before_call()
             started = time.monotonic()
             try:
-                reply = self._session().post(url, json=body, headers=self._headers, timeout=self.timeout_s)
+                reply = self._session().post(
+                    url, json=body, headers=self._headers, timeout=self.timeout_s
+                )
             except requests.RequestException as err:
                 last_error = f"{type(err).__name__}: {err}"
                 self._breaker.record(ok=False)

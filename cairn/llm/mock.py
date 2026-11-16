@@ -105,7 +105,9 @@ class DemoReaderBackend:
 
     model = "demo-reader"
 
-    def __init__(self, recency: float = 2.0, sharpness: float = 4.0, noise: float = 0.0, seed: int = 0):
+    def __init__(
+        self, recency: float = 2.0, sharpness: float = 4.0, noise: float = 0.0, seed: int = 0
+    ):
         self.recency = recency
         self.sharpness = sharpness
         self.noise = noise
@@ -138,7 +140,9 @@ class DemoReaderBackend:
             demos.extend(self._block_demos(head))
             is_last = index == len(messages) - 1
             if not is_last and index + 1 < len(messages) and messages[index + 1][0] == "assistant":
-                demos.append((Counter(word_tokens(last_input)), _clean_output(messages[index + 1][1])))
+                demos.append(
+                    (Counter(word_tokens(last_input)), _clean_output(messages[index + 1][1]))
+                )
         query = messages[-1][1].rpartition("Input: ")[2]
         query = re.sub(r"\nOutput:\s*$", "", query)
         return demos, query
@@ -194,8 +198,12 @@ class DemoReaderBackend:
                         pick = o
                         break
             texts.append(self._wrap(pick, request))
-            first.append({o.split()[0]: lp for o, lp in logp.items()} if request.top_logprobs else {})
-        return GenResponse(texts=texts, reasoning=[""] * request.n, first_token_logprobs=first, usage=usage)
+            first.append(
+                {o.split()[0]: lp for o, lp in logp.items()} if request.top_logprobs else {}
+            )
+        return GenResponse(
+            texts=texts, reasoning=[""] * request.n, first_token_logprobs=first, usage=usage
+        )
 
     @staticmethod
     def _wrap(answer: str, request: GenRequest) -> str:

@@ -41,11 +41,20 @@ def run_checks(backend: OpenAICompatBackend) -> list[Check]:
                 "server reachable",
                 True,
                 f"models: {', '.join(models) or 'none listed'}",
-                "" if known else f"model '{backend.model}' is not listed; set backend.model to one of the above",
+                ""
+                if known
+                else f"model '{backend.model}' is not listed; set backend.model to one of the above",
             )
         )
     except Exception as err:
-        checks.append(Check("server reachable", False, str(err)[:200], "start the server or fix backend.base_url"))
+        checks.append(
+            Check(
+                "server reachable",
+                False,
+                str(err)[:200],
+                "start the server or fix backend.base_url",
+            )
+        )
         return checks
 
     try:
@@ -57,7 +66,9 @@ def run_checks(backend: OpenAICompatBackend) -> list[Check]:
                 "plain answer (thinking off)",
                 clean,
                 f"got {text[:40]!r}",
-                "" if clean else "thinking could not be switched off; check chat_template_kwargs support",
+                ""
+                if clean
+                else "thinking could not be switched off; check chat_template_kwargs support",
             )
         )
     except LLMError as err:
@@ -75,14 +86,25 @@ def run_checks(backend: OpenAICompatBackend) -> list[Check]:
             )
         )
     except LLMError as err:
-        checks.append(Check("token probabilities (logprobs)", False, str(err)[:200], "set strategy.use_scoring: false"))
+        checks.append(
+            Check(
+                "token probabilities (logprobs)",
+                False,
+                str(err)[:200],
+                "set strategy.use_scoring: false",
+            )
+        )
 
     working_style = None
     for style in (backend.structured_api, "structured_outputs", "guided"):
         if style == "none":
             continue
         probe = OpenAICompatBackend(
-            backend.base_url, backend.model, structured_api=style, retry=backend.retry, timeout_s=backend.timeout_s
+            backend.base_url,
+            backend.model,
+            structured_api=style,
+            retry=backend.retry,
+            timeout_s=backend.timeout_s,
         )
         try:
             reply = _ask(probe, "Pick one.", max_tokens=8, constraint=Choice(("alpha", "beta")))
@@ -114,7 +136,9 @@ def run_checks(backend: OpenAICompatBackend) -> list[Check]:
                 "thinking mode",
                 bool(thought),
                 f"{len(thought)} characters of reasoning, answer {reply.texts[0][:20]!r}",  # type: ignore[attr-defined]
-                "" if thought else "no reasoning came back; escalation will behave like plain sampling",
+                ""
+                if thought
+                else "no reasoning came back; escalation will behave like plain sampling",
             )
         )
     except LLMError as err:

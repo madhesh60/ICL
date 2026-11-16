@@ -77,5 +77,7 @@ def score_options(
     response = backend.generate(request)
     first = response.first_token_logprobs[0] if response.first_token_logprobs else {}
     if not first:
-        raise ValueError("the server returned no log-probabilities; enable logprobs or use generation")
+        raise ValueError(
+            "the server returned no log-probabilities; enable logprobs or use generation"
+        )
     return options_from_logprobs(first, options), response.texts[0]

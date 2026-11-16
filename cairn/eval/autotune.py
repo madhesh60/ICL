@@ -52,7 +52,10 @@ class TuneResult:
 
     def table(self) -> str:
         lines = ["| setting | examples seen | accuracy | model calls |", "|---|---|---|---|"]
-        ranked = sorted(self.trials.values(), key=lambda t: (-len(t.rounds), -(t.final.accuracy if t.final else 0)))
+        ranked = sorted(
+            self.trials.values(),
+            key=lambda t: (-len(t.rounds), -(t.final.accuracy if t.final else 0)),
+        )
         for trial in ranked:
             last = trial.rounds[-1]
             mark = " **(winner)**" if trial.name == self.winner else ""

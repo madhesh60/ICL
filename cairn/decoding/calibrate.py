@@ -109,7 +109,9 @@ class VectorScaling:
         return _log_softmax(self.scale * np.atleast_2d(logp) + self.bias)
 
 
-def expected_calibration_error(confidence: Sequence[float], correct: Sequence[bool], bins: int = 10) -> float:
+def expected_calibration_error(
+    confidence: Sequence[float], correct: Sequence[bool], bins: int = 10
+) -> float:
     """How far "I am 80% sure" is from "I am right 80% of the time", averaged over bins."""
     conf = np.asarray(confidence, dtype=np.float64)
     hit = np.asarray(correct, dtype=np.float64)

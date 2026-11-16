@@ -91,7 +91,9 @@ def context_report(builder: ContextBuilder, queries: Sequence[Query]) -> Context
             found = sum(w for f, w in weight.items() if f in bulk_features[prompt.cluster])
             coverages.append(found / total)
     labels = [e.output for e in builder.bulk_examples(0)]
-    streak, entropy = _streak_and_entropy(labels) if builder.spec.kind == "classification" else (0, 0.0)
+    streak, entropy = (
+        _streak_and_entropy(labels) if builder.spec.kind == "classification" else (0, 0.0)
+    )
     return ContextReport(
         n_queries=len(queries),
         mean_bulk_examples=float(np.mean(bulk_sizes)) if bulk_sizes else 0.0,

@@ -133,13 +133,17 @@ class TaskRunner:
             "code": result.program.code if result.program else None,
         }
 
-    def _score_examples(self, builder: ContextBuilder, examples: Sequence[Example]) -> np.ndarray | None:
+    def _score_examples(
+        self, builder: ContextBuilder, examples: Sequence[Example]
+    ) -> np.ndarray | None:
         """Raw label log-probabilities for labelled held-out examples (one cheap call each)."""
         labels = self.spec.labels
         queries = [Query(e.id, e.input, e.output) for e in examples]
 
         def work(query: Query) -> np.ndarray:
-            return score_options(self.meter, builder.build(query).messages, labels, tag="calibrate")[0]
+            return score_options(
+                self.meter, builder.build(query).messages, labels, tag="calibrate"
+            )[0]
 
         try:
             rows = run_grouped(
@@ -205,8 +209,14 @@ class TaskRunner:
         cheap = StrategyConfig(escalate=False, use_scoring=False, seed=self.config.strategy.seed)
         with_rules = self.builder.with_guidelines(rulebook)
         try:
-            plain = evaluate(self._annotate_all(Annotator(self.spec, self.builder, self.meter, cheap), probe), probe)
-            ruled = evaluate(self._annotate_all(Annotator(self.spec, with_rules, self.meter, cheap), probe), probe)
+            plain = evaluate(
+                self._annotate_all(Annotator(self.spec, self.builder, self.meter, cheap), probe),
+                probe,
+            )
+            ruled = evaluate(
+                self._annotate_all(Annotator(self.spec, with_rules, self.meter, cheap), probe),
+                probe,
+            )
         except LLMError as err:
             self.notes["guidelines"] = f"not tested ({err}); discarded"
             return
@@ -242,7 +252,9 @@ class TaskRunner:
         done = journal.load() if journal is not None else {}
         pending = [q for q in queries if q.id not in done]
         if done:
-            log.info("resuming: %d of %d inputs already done", len(queries) - len(pending), len(queries))
+            log.info(
+                "resuming: %d of %d inputs already done", len(queries) - len(pending), len(queries)
+            )
 
         program_answers: dict[str, str | None] = {}
         if self.program is not None and pending:
@@ -276,7 +288,9 @@ class TaskRunner:
                 self.memory.commit()
         return [done[q.id] for q in queries]
 
-    def evaluate(self, role: str = "dev", limit: int | None = None) -> tuple[EvalReport, list[Prediction]]:
+    def evaluate(
+        self, role: str = "dev", limit: int | None = None
+    ) -> tuple[EvalReport, list[Prediction]]:
         """Label one of our own held-out roles and score it."""
         queries = self.splits.as_queries(role)[:limit]
         if not queries:

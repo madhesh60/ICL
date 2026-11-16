@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from itertools import pairwise
 
 # A word, a number, or any single symbol that is not a space.  Symbols are kept
 # because in tweets an emoji such as a crying face carries most of the meaning.
@@ -29,7 +30,7 @@ def lexical_features(text: str, *, bigrams: bool = True, chars: bool = False) ->
     words = word_tokens(text)
     features = [f"w:{w}" for w in words]
     if bigrams:
-        features.extend(f"b:{a}_{b}" for a, b in zip(words, words[1:], strict=False))
+        features.extend(f"b:{a}_{b}" for a, b in pairwise(words))
     if chars:
         features.extend(f"c:{g}" for g in char_ngrams(text))
     return features

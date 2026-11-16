@@ -1,12 +1,12 @@
 """Command line entry point: `cairn <command>`.
 
-    cairn inspect                 what is in the data, how it is split, token sizes
-    cairn context --task 6        measure a prompt design without a model
-    cairn baseline                scores that need no model (reference points)
-    cairn doctor                  check what the model server supports
-    cairn run --task all          label dev or test inputs
-    cairn tune --task 5           race pipeline settings on the dev split
-    cairn submit                  validate and zip the eight prediction files
+cairn inspect                 what is in the data, how it is split, token sizes
+cairn context --task 6        measure a prompt design without a model
+cairn baseline                scores that need no model (reference points)
+cairn doctor                  check what the model server supports
+cairn run --task all          label dev or test inputs
+cairn tune --task 5           race pipeline settings on the dev split
+cairn submit                  validate and zip the eight prediction files
 """
 
 from __future__ import annotations
@@ -62,7 +62,11 @@ def make_backend(cfg: BackendConfig, cache_path: Path | None = None) -> LLMBacke
 def _git_commit() -> str:
     try:
         return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, timeout=5
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=5,
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -74,7 +78,9 @@ def _git_commit() -> str:
 def cmd_inspect(args: argparse.Namespace, app: AppConfig) -> int:
     counter = get_counter(args.tokenizer)
     print(f"token counter: {counter.name} (safety margin {counter.margin:.0%})\n")
-    print("| task | name | kind | examples | pool | calib | dev | holdout | test | tokens/example | labels |")
+    print(
+        "| task | name | kind | examples | pool | calib | dev | holdout | test | tokens/example | labels |"
+    )
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     for task_id in _task_ids(args.task):
         task = load_task(task_id, args.data_dir)
@@ -83,7 +89,11 @@ def cmd_inspect(args: argparse.Namespace, app: AppConfig) -> int:
         spec = get_task(task_id, tuple(e.output for e in splits.pool))
         sample = task.examples[:: max(1, len(task.examples) // 300)]
         per = sum(counter.count(e.input) + counter.count(e.output) for e in sample) / len(sample)
-        labels = ", ".join(spec.labels) if spec.labels else f"{len({e.output for e in task.examples})} distinct"
+        labels = (
+            ", ".join(spec.labels)
+            if spec.labels
+            else f"{len({e.output for e in task.examples})} distinct"
+        )
         print(
             f"| {task_id} | {spec.name} | {spec.kind} | {len(task.examples)} | {len(splits.pool)} | "
             f"{len(splits.calib)} | {len(splits.dev)} | {len(splits.holdout)} | {len(task.test)} | "
@@ -114,14 +124,20 @@ def cmd_context(args: argparse.Namespace, app: AppConfig) -> int:
         report = context_report(builder, queries)
         grouped = simulate_prefix_cache(builder, queries, counter, grouped=True, slots=args.slots)
         arrival = simulate_prefix_cache(builder, queries, counter, grouped=False, slots=args.slots)
-        print(f"task {task_id} ({spec.name}), {len(queries)} dev inputs, {builder.n_clusters} cluster(s)")
+        print(
+            f"task {task_id} ({spec.name}), {len(queries)} dev inputs, {builder.n_clusters} cluster(s)"
+        )
         print("  context :", json.dumps(report.to_json()))
         print("  cache, grouped order :", json.dumps(grouped.to_json()))
         print("  cache, arrival order :", json.dumps(arrival.to_json()))
         if args.show:
             for message in builder.build(queries[0]).messages:
                 content = message["content"]
-                body = content if len(content) < 1600 else f"{content[:800]}\n  [...]\n{content[-700:]}"
+                body = (
+                    content
+                    if len(content) < 1600
+                    else f"{content[:800]}\n  [...]\n{content[-700:]}"
+                )
                 print(f"\n--- {message['role']} ({counter.count(content)} tokens) ---\n{body}")
     return 0
 
@@ -140,7 +156,9 @@ def cmd_baseline(args: argparse.Namespace, app: AppConfig) -> int:
         splits = split_examples(task.examples, run_cfg.splits, run_cfg.split_seed)
         spec = get_task(task_id, tuple(e.output for e in splits.pool))
         dev = splits.as_queries("dev")
-        builder = ContextBuilder(spec, splits.pool, counter, run_cfg.context, definition=task.definition)
+        builder = ContextBuilder(
+            spec, splits.pool, counter, run_cfg.context, definition=task.definition
+        )
         label, majority = majority_accuracy(splits.pool, dev)
         shown = label if len(label) <= 12 else label[:12] + "..."
         print(
@@ -168,7 +186,9 @@ def cmd_doctor(args: argparse.Namespace, app: AppConfig) -> int:
     return 1 if failed else 0
 
 
-def _run_one(task_id: int, args: argparse.Namespace, app: AppConfig, run_dir: Path) -> dict[str, object]:
+def _run_one(
+    task_id: int, args: argparse.Namespace, app: AppConfig, run_dir: Path
+) -> dict[str, object]:
     from cairn.eval.metrics import evaluate
     from cairn.submit import write_task_file
 
@@ -222,7 +242,9 @@ def cmd_run(args: argparse.Namespace, app: AppConfig) -> int:
     for task_id in _task_ids(args.task):
         summary = _run_one(task_id, args, app, run_dir)
         if args.split == "test":
-            print(f"task {task_id} [test] wrote {summary['n']} predictions, sources: {summary['sources']}")
+            print(
+                f"task {task_id} [test] wrote {summary['n']} predictions, sources: {summary['sources']}"
+            )
     print(f"\nrun folder: {run_dir}")
     return 0
 
@@ -251,7 +273,9 @@ def cmd_tune(args: argparse.Namespace, app: AppConfig) -> int:
             return lambda: TaskRunner(task, backend, counter, cfg)
 
         dev = TaskRunner(task, backend, counter, base).splits.as_queries("dev")[: args.limit]
-        result = successive_halving({n: factory(c) for n, c in candidates.items()}, dev, start=args.start)
+        result = successive_halving(
+            {n: factory(c) for n, c in candidates.items()}, dev, start=args.start
+        )
         print(f"\ntask {task_id}: winner = {result.winner}")
         if result.runner_up is not None:
             print(f"paired test against runner-up '{result.runner_up}': p = {result.p_value:.3f}")
@@ -275,7 +299,9 @@ def cmd_submit(args: argparse.Namespace, app: AppConfig) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cairn", description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog="cairn", description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument("--config", help="YAML settings file (default: built-in settings)")
     parser.add_argument("--data-dir", help="folder with the 8 task json files")
     parser.add_argument("--tokenizer", help="local Qwen3-4B folder for exact token counts")
@@ -295,7 +321,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=100)
     p.add_argument("--clusters", type=int)
     p.add_argument("--selection", choices=["coverage", "random", "first"])
-    p.add_argument("--slots", type=int, default=2, help="prompt beginnings the simulated server remembers")
+    p.add_argument(
+        "--slots", type=int, default=2, help="prompt beginnings the simulated server remembers"
+    )
     p.add_argument("--show", action="store_true", help="print one assembled prompt (shortened)")
 
     p = add("baseline", cmd_baseline, "model-free reference scores on the dev split")

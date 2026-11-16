@@ -262,13 +262,17 @@ def static_check(code: str, signature: WrapperSignature | None = None) -> Static
                 if alias.name == "language":
                     tl_aliases.add(alias.asname or "language")
     if not triton_aliases and not tl_aliases:
-        report.problems.append("The code never imports triton (need `import triton` and `import triton.language as tl`).")
+        report.problems.append(
+            "The code never imports triton (need `import triton` and `import triton.language as tl`)."
+        )
 
     functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
     jit_functions = [f for f in functions if any(_is_jit(d) for d in f.decorator_list)]
     report.facts["n_kernels"] = len(jit_functions)
     if not jit_functions:
-        report.problems.append("No function is decorated with @triton.jit, so there is no Triton kernel.")
+        report.problems.append(
+            "No function is decorated with @triton.jit, so there is no Triton kernel."
+        )
 
     unknown = sorted(
         {
@@ -282,7 +286,9 @@ def static_check(code: str, signature: WrapperSignature | None = None) -> Static
     )
     if unknown:
         report.problems.append(
-            "These names do not exist in triton.language: " + ", ".join(f"tl.{n}" for n in unknown) + "."
+            "These names do not exist in triton.language: "
+            + ", ".join(f"tl.{n}" for n in unknown)
+            + "."
         )
     unknown_top = sorted(
         {
@@ -297,7 +303,9 @@ def static_check(code: str, signature: WrapperSignature | None = None) -> Static
     )
     if unknown_top:
         report.problems.append(
-            "These names do not exist in triton: " + ", ".join(f"triton.{n}" for n in unknown_top) + "."
+            "These names do not exist in triton: "
+            + ", ".join(f"triton.{n}" for n in unknown_top)
+            + "."
         )
 
     for kernel in jit_functions:
@@ -326,8 +334,12 @@ def static_check(code: str, signature: WrapperSignature | None = None) -> Static
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id in tl_aliases
         }
-        if "store" not in calls and not any(isinstance(n, ast.Return) and n.value for n in body_nodes):
-            report.warnings.append(f"Kernel `{kernel.name}` never calls tl.store, so it writes no result.")
+        if "store" not in calls and not any(
+            isinstance(n, ast.Return) and n.value for n in body_nodes
+        ):
+            report.warnings.append(
+                f"Kernel `{kernel.name}` never calls tl.store, so it writes no result."
+            )
 
     launches = [
         n
@@ -339,7 +351,9 @@ def static_check(code: str, signature: WrapperSignature | None = None) -> Static
         )
     ]
     if jit_functions and not launches:
-        report.problems.append("No kernel is ever launched (expected a call like `kernel[grid](...)`).")
+        report.problems.append(
+            "No kernel is ever launched (expected a call like `kernel[grid](...)`)."
+        )
 
     if signature is not None:
         accepted = {signature.py_name, signature.full_name.replace(".", "_")}

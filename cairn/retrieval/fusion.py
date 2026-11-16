@@ -7,7 +7,9 @@ from collections.abc import Sequence
 import numpy as np
 
 
-def reciprocal_rank_fusion(rankings: Sequence[Sequence[int]], k: int = 60) -> list[tuple[int, float]]:
+def reciprocal_rank_fusion(
+    rankings: Sequence[Sequence[int]], k: int = 60
+) -> list[tuple[int, float]]:
     """Merge rankings by position, not by raw score.
 
     Two search methods give scores on different scales, so adding scores is

@@ -25,7 +25,10 @@ def test_char_ngrams_match_word_variants():
 
 
 def test_bm25_prefers_rare_matching_words():
-    docs = [word_tokens(t) for t in ["the cat sat", "the cat ran", "the tiramisu dessert", "the the the"]]
+    docs = [
+        word_tokens(t)
+        for t in ["the cat sat", "the cat ran", "the tiramisu dessert", "the the the"]
+    ]
     index = BM25Index(docs)
     top = index.top_k(word_tokens("a tiramisu for the cat"), 2)
     assert top[0][0] == 2  # "tiramisu" (1 doc) beats "cat" (2 docs) beats "the" (all docs)
@@ -61,7 +64,10 @@ def test_hashed_vectors_are_identical_in_another_process():
         "v = HashedTfidf(64).fit([['a','b'],['b','c']]).transform([['a','c']]);"
         "print(','.join(f'{x:.6f}' for x in v[0]))"
     )
-    runs = {subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout for _ in range(2)}
+    runs = {
+        subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout
+        for _ in range(2)
+    }
     assert len(runs) == 1 and next(iter(runs)).strip()
 
 
@@ -71,7 +77,11 @@ def test_kmeans_separates_obvious_groups_and_is_repeatable():
     _, labels_a = spherical_kmeans(vectors, 2, seed=3)
     _, labels_b = spherical_kmeans(vectors, 2, seed=3)
     assert np.array_equal(labels_a, labels_b)
-    assert len(set(labels_a[:20])) == 1 and len(set(labels_a[20:])) == 1 and labels_a[0] != labels_a[-1]
+    assert (
+        len(set(labels_a[:20])) == 1
+        and len(set(labels_a[20:])) == 1
+        and labels_a[0] != labels_a[-1]
+    )
 
 
 def _toy_problem(n=60, n_features=40, seed=0):
@@ -99,7 +109,10 @@ def test_coverage_reaches_budget_and_beats_random():
             order.append(int(i))
             total += costs[i]
         # Same budget, random choice: never better than greedy on this objective.
-        assert coverage_value(result.order, features, weights) >= coverage_value(order, features, weights) - 1e-9
+        assert (
+            coverage_value(result.order, features, weights)
+            >= coverage_value(order, features, weights) - 1e-9
+        )
 
 
 def test_lazy_greedy_equals_plain_greedy():
@@ -109,9 +122,14 @@ def test_lazy_greedy_equals_plain_greedy():
     mass = np.zeros(len(weights))
     chosen, total, left = [], 0, set(range(len(costs)))
     while total < 150 and left:
+
         def ratio(i):
             ids, vals = features[i]
-            return float(np.dot(weights[ids], np.sqrt(mass[ids] + vals) - np.sqrt(mass[ids]))) / costs[i]
+            return (
+                float(np.dot(weights[ids], np.sqrt(mass[ids] + vals) - np.sqrt(mass[ids])))
+                / costs[i]
+            )
+
         best = max(sorted(left), key=ratio)
         mass[features[best][0]] += features[best][1]
         chosen.append(best)
@@ -132,7 +150,11 @@ def test_group_quotas_limit_a_dominant_group_but_never_break_the_budget():
 
 
 def test_already_chosen_items_are_complemented_not_repeated():
-    features = [(np.array([0]), np.ones(1)), (np.array([0]), np.ones(1)), (np.array([1]), np.ones(1))]
+    features = [
+        (np.array([0]), np.ones(1)),
+        (np.array([0]), np.ones(1)),
+        (np.array([1]), np.ones(1)),
+    ]
     result = budgeted_coverage(features, np.ones(2), [1, 1, 1], 1, already_chosen=[0])
     assert result.order == [2]  # feature 0 is covered already, so the new feature wins
 
