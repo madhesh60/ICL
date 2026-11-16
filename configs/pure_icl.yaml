@@ -1,0 +1,22 @@
+# Strict profile: every answer comes out of the language model itself.
+#   - calibration only re-weighs the model's own label scores (no nearest-examples vote,
+#     no task signals)
+#   - no model-written programs are executed to produce answers
+# Use it to measure what in-context learning alone achieves, or when rules forbid tools.
+# Everything not listed here uses the built-in defaults (explained in default.yaml).
+
+backend:
+  kind: openai
+  base_url: http://127.0.0.1:2026/v1
+  model: Qwen3-4B
+
+defaults:
+  strategy:
+    calibration: vector
+    use_program: false
+
+tasks:
+  7: { context: { n_clusters: 4, tail_k: 16 } }
+  8:
+    workers: 4
+    context: { n_clusters: 4, tail_k: 3 }

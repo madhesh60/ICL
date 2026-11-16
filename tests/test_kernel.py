@@ -148,3 +148,22 @@ def test_reference_kernels_pass_the_static_check(task_loader):
     task = task_loader(8)
     flagged = [e for e in task.examples if not static_check(e.output).ok]
     assert len(flagged) == 1 and "tl.cidv" in static_check(flagged[0].output).problems[0]
+
+
+def test_code_quality_summary():
+    from cairn.tasks.kernel_exec import code_quality
+    from cairn.types import Prediction
+
+    predictions = [
+        Prediction("a", "x", meta={"tier": 4, "exec_status": "exec_ok"}),
+        Prediction("b", "x", meta={"tier": 1, "exec_status": "wrong_result"}),
+        Prediction("c", "x", meta={"tier": 2, "exec_status": "not_run"}),
+        Prediction("d", "x", meta={}),
+    ]
+    quality = code_quality(predictions)
+    assert (
+        quality["static_ok"] == 0.5
+        and quality["callable"] == 0.5
+        and quality["matches_torch"] == 0.25
+    )
+    assert quality["consistency"] == pytest.approx(consistency_score(2, 1, 4))

@@ -72,7 +72,17 @@ Same token budget, four ways to choose. *coverage* = share of each dev input's i
 | 8 | 0% | grouped (Cairn) | 0.960 | 94.1% | 0.36M of 6.21M |
 | 8 | 0% | arrival | 0.960 | 22.3% | 4.82M of 6.21M |
 
-## 5. Can the code checker be trusted?
+## 5. Cheap signals, combined by the stacked calibrator (still no model)
+
+A logistic regression fitted on the *calib* split, scored on *dev*. Inputs: the nearest-examples vote, plus task signals where the task card defines them. With a real model, the model's own label scores are added as further inputs.
+
+| task | majority | kNN vote | stacked: kNN vote + task signals |
+|---|---|---|---|
+| 2 | 28.3% | 49.0% | **48.7%** |
+| 5 | 61.4% | 68.3% | **68.3%** |
+| 6 | 64.3% | 58.0% | **94.7%** |
+
+## 6. Can the code checker be trusted?
 
 Run on the dataset's own reference kernels, which are known to be real code:
 
@@ -80,12 +90,12 @@ Run on the dataset's own reference kernels, which are known to be real code:
 - Reference kernels passing the static check: **183/184**
   - flagged: These names do not exist in triton.language: tl.cidv.
 
-## 6. Prompt building speed (one CPU core)
+## 7. Prompt building speed (one CPU core)
 
 | task | one-time setup | per prompt |
 |---|---|---|
-| 1 | 1.0s | 0.9 ms |
-| 6 | 2.4s | 3.1 ms |
-| 7 | 4.9s | 2.4 ms |
+| 1 | 0.8s | 0.8 ms |
+| 6 | 1.7s | 3.9 ms |
+| 7 | 6.0s | 3.1 ms |
 
-_Report built in 118s._
+_Report built in 115s._

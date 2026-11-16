@@ -33,7 +33,7 @@ defaults:
   strategy:
     use_program: true           # exact tasks: model writes a program, we verify it
     use_scoring: true           # classification: read label probabilities
-    calibration: vector         # none | batch | vector
+    calibration: stack          # none | batch | vector | stack (stack adds model-free signals)
     conformal_alpha: 0.1        # allowed miss rate of the "plausible labels" set
     escalate: true              # unsure -> think + vote
     vote_n: 5

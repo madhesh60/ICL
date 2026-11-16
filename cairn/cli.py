@@ -12,6 +12,7 @@ cairn submit                  validate and zip the eight prediction files
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import subprocess
@@ -203,7 +204,8 @@ def _run_one(
     queries = list(task.test) if args.split == "test" else runner.splits.as_queries(args.split)
     queries = queries[: args.limit]
     started = time.time()
-    predictions = runner.run(queries, Journal(task_dir / f"{args.split}.journal.jsonl"))
+    journal = _open_journal(task_dir, args.split, run_cfg, backend.model, fresh=args.fresh)
+    predictions = runner.run(queries, journal)
     summary: dict[str, object] = {
         "task": task_id,
         "split": args.split,
@@ -218,6 +220,18 @@ def _run_one(
     }
     if args.split == "test":
         write_task_file(task_dir / f"openseek-{task_id}.jsonl", predictions)
+    elif runner.spec.kind == "code":
+        # Code has no single right string, so exact match says nothing.  Report how far
+        # each kernel got instead, and the competition's consistency score.
+        from cairn.tasks.kernel_exec import code_quality
+
+        quality = code_quality(predictions)
+        summary["code_quality"] = quality
+        print(
+            f"task {task_id} [{args.split}] static check OK {quality['static_ok']:.0%}, "
+            f"runs {quality['callable']:.0%}, matches PyTorch {quality['matches_torch']:.0%}, "
+            f"consistency score {quality['consistency']:.3f} (n={quality['n']})"
+        )
     else:
         report = evaluate(predictions, queries)
         summary["eval"] = report.to_json()
@@ -228,6 +242,33 @@ def _run_one(
         json.dumps(summary, indent=2, ensure_ascii=False, default=str), encoding="utf-8"
     )
     return summary
+
+
+def _open_journal(
+    task_dir: Path, split: str, run_cfg: RunConfig, model: str, *, fresh: bool
+) -> Journal:
+    """Open the resume journal, refusing to mix answers made with different settings.
+
+    Resuming is only correct if the settings are the same as when the journal was
+    started.  A fingerprint of the settings is stored next to the journal; if it
+    does not match, we stop instead of quietly mixing old and new answers.
+    """
+    path = task_dir / f"{split}.journal.jsonl"
+    meta = task_dir / f"{split}.journal.meta.json"
+    payload = json.dumps({"config": asdict(run_cfg), "model": model}, sort_keys=True, default=str)
+    fingerprint = hashlib.sha256(payload.encode()).hexdigest()[:16]
+    if fresh:
+        path.unlink(missing_ok=True)
+        meta.unlink(missing_ok=True)
+    if path.exists() and meta.exists():
+        stored = json.loads(meta.read_text(encoding="utf-8")).get("fingerprint")
+        if stored != fingerprint:
+            raise SystemExit(
+                f"{path} was started with different settings (fingerprint {stored} vs "
+                f"{fingerprint}). Use a new --run-dir, or add --fresh to start this task over."
+            )
+    meta.write_text(json.dumps({"fingerprint": fingerprint}), encoding="utf-8")
+    return Journal(path)
 
 
 def _count(items) -> dict[str, int]:
@@ -354,6 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int)
     p.add_argument("--workers", type=int)
     p.add_argument("--run-dir", default="runs/default")
+    p.add_argument("--fresh", action="store_true", help="discard saved answers and start over")
 
     p = add("tune", cmd_tune, "race pipeline settings on the dev split")
     p.add_argument("--task", default="5")

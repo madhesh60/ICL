@@ -20,10 +20,12 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from cairn.tasks.kernel import WrapperSignature
+from cairn.types import Prediction
 
 _DRIVER = Path(__file__).with_name("_kernel_driver.py")
 
@@ -116,3 +118,25 @@ def consistency_score(n_called: int, n_correct: int, n_total: int) -> float:
     s_call = n_called / n_total
     s_exec = n_correct / n_total
     return s_exec * (1.0 - (s_call - s_exec) / s_call)
+
+
+def code_quality(predictions: Sequence[Prediction]) -> dict[str, float]:
+    """Summarise a batch of code answers from the stages they reached.
+
+    `callable` counts kernels that ran and returned tensors (right or wrong);
+    `matches_torch` counts kernels proven equal to the PyTorch function of the
+    same name.  Kernels that could not be executed here count as neither, so on
+    a machine without triton these two numbers are lower bounds.
+    """
+    n = len(predictions)
+    statuses = [str(p.meta.get("exec_status", "")) for p in predictions]
+    static_ok = sum(1 for p in predictions if int(p.meta.get("tier", 0)) >= 2)
+    called = sum(1 for s in statuses if s in CALLABLE)
+    correct = sum(1 for s in statuses if s in PROVEN_GOOD)
+    return {
+        "n": n,
+        "static_ok": static_ok / n if n else 0.0,
+        "callable": called / n if n else 0.0,
+        "matches_torch": correct / n if n else 0.0,
+        "consistency": consistency_score(called, correct, n),
+    }

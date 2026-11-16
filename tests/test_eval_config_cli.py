@@ -175,3 +175,15 @@ def test_cli_offline_run_writes_journal_and_report(tmp_path, capsys):
     assert report["eval"]["n"] == 8 and report["n"] == 8
     assert len((run_dir / "task6" / "dev.journal.jsonl").read_text().splitlines()) == 8
     assert main(["submit", "--run-dir", str(run_dir), "--out", str(tmp_path / "s.zip")]) == 1
+
+
+@pytest.mark.data
+def test_cli_refuses_to_resume_with_different_settings(tmp_path):
+    run_dir = str(tmp_path / "run")
+    base = ["run", "--task", "5", "--split", "dev", "--limit", "4", "--run-dir", run_dir]
+    assert main(["--config", "configs/offline.yaml", *base]) == 0
+    other = tmp_path / "other.yaml"
+    other.write_text("backend: {kind: demo-reader}\ndefaults: {workers: 1}\n")
+    with pytest.raises(SystemExit, match="different settings"):
+        main(["--config", str(other), *base])
+    assert main(["--config", str(other), *base, "--fresh"]) == 0
