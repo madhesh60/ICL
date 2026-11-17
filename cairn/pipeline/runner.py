@@ -91,6 +91,9 @@ class TaskRunner:
         self.program: InducedProgram | None = None
         self.memory: AnnotationMemory | None = None
         self.signal_fn = None
+        # Set to False by prepare() when held-out examples show the cheap scoring rung
+        # cannot be trusted when it claims to be sure.
+        self.trust_scores = True
         # Everything prepare() decided, in plain data, for the run report.
         self.notes: dict[str, object] = {}
 
@@ -127,18 +130,55 @@ class TaskRunner:
             self.notes["program"] = "skipped: too few held-out examples to verify a program"
             return
         half = len(calib) // 2
-        inducer = ProgramInducer(self.meter, seed=self.config.strategy.seed)
-        examples_text = self.builder.prefix_messages(0)[1]["content"]
+        cfg = self.config.strategy
+        inducer = ProgramInducer(
+            self.meter,
+            max_rounds=cfg.induction_rounds,
+            max_tokens=cfg.induction_max_tokens,
+            seed=cfg.seed,
+        )
+        # A short, varied slice of the shared block: evenly spaced, so inputs of every
+        # length are represented.  The first real run sent the whole 30K-token block with a
+        # 2K reply budget and never got a program back.
+        bulk = self.builder.bulk_examples(0)
+        step = max(1, len(bulk) // max(1, cfg.induction_examples))
+        shown = bulk[::step][: cfg.induction_examples]
+        examples_text = "# Examples\n\n" + "".join(render_demo(self.spec, e) for e in shown)
         result = inducer.induce(self.task.definition, examples_text, calib[:half], calib[half:])
         self.program = result.program
         self.notes["program"] = {
             "accepted": result.accepted,
             "attempts": len(result.attempts),
+            "examples_shown": len(shown),
             "verified_on": half,
             "confirmed_on": len(calib) - half,
             "best_verify_accuracy": max((a.verify_accuracy for a in result.attempts), default=0.0),
+            "attempt_log": [
+                {
+                    "round": a.round,
+                    "thinking": a.thinking,
+                    "finish": a.finish,
+                    "verify_accuracy": round(a.verify_accuracy, 4),
+                    "problem": (a.problems[0][:200] if a.problems else ""),
+                }
+                for a in result.attempts
+            ],
             "code": result.program.code if result.program else None,
         }
+        if result.accepted:
+            log.info(
+                "task %d: program accepted after %d attempt(s)",
+                self.task.task_id,
+                len(result.attempts),
+            )
+        else:
+            log.warning(
+                "task %d: no program accepted after %d attempt(s) (best verify accuracy %.1f%%); "
+                "falling back to in-context labelling",
+                self.task.task_id,
+                len(result.attempts),
+                100 * self.notes["program"]["best_verify_accuracy"],  # type: ignore[index]
+            )
 
     def _score_examples(
         self, builder: ContextBuilder, examples: Sequence[Example]
@@ -202,13 +242,32 @@ class TaskRunner:
         if cfg.conformal_alpha is not None:
             self.conformal = SplitConformal(cfg.conformal_alpha).fit(probs, y[half:])
             report = self.conformal.report(probs, y[half:])
+            n_single = round(report.singleton_rate * (len(calib) - half))
+            # The conformal promise is about coverage ("the truth is in the set 90% of the
+            # time"), not about the accuracy of one-label sets.  Check that separately:
+            # if the sure answers on held-out examples are not accurate, do not stop at them.
+            judged = n_single >= cfg.min_singleton_count
+            self.trust_scores = (
+                not judged
+            ) or report.singleton_accuracy >= cfg.min_singleton_accuracy
             note["conformal"] = {
                 "alpha": cfg.conformal_alpha,
                 "threshold": round(float(self.conformal.threshold or 0.0), 4),
                 "measured_on": len(calib) - half,
                 "singleton_rate": round(report.singleton_rate, 4),
+                "singleton_count": n_single,
                 "singleton_accuracy": round(report.singleton_accuracy, 4),
+                "singletons_trusted": self.trust_scores,
             }
+            if not self.trust_scores:
+                log.warning(
+                    "task %d: the cheap scoring rung was right on only %.0f%% of the %d held-out "
+                    "inputs it was sure about (bar %.0f%%); every input will think and vote",
+                    self.task.task_id,
+                    100 * report.singleton_accuracy,
+                    n_single,
+                    100 * cfg.min_singleton_accuracy,
+                )
         self.notes["calibration"] = note
 
     def _prepare_guidelines(self, calib: list[Example]) -> None:
@@ -285,6 +344,7 @@ class TaskRunner:
             program_answers=program_answers,
             signal_fn=self.signal_fn,
             memory=self.memory,
+            trust_scores=self.trust_scores,
         )
         waves = _chunks(pending, self.config.memory_wave) if self.memory is not None else [pending]
         for wave in waves:

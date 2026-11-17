@@ -129,14 +129,21 @@ def code_quality(predictions: Sequence[Prediction]) -> dict[str, float]:
     a machine without triton these two numbers are lower bounds.
     """
     n = len(predictions)
-    statuses = [str(p.meta.get("exec_status", "")) for p in predictions]
+    statuses = [str(p.meta.get("exec_status", "")) or "none" for p in predictions]
     static_ok = sum(1 for p in predictions if int(p.meta.get("tier", 0)) >= 2)
     called = sum(1 for s in statuses if s in CALLABLE)
     correct = sum(1 for s in statuses if s in PROVEN_GOOD)
+    histogram: dict[str, int] = {}
+    for status in statuses:
+        histogram[status] = histogram.get(status, 0) + 1
     return {
         "n": n,
         "static_ok": static_ok / n if n else 0.0,
         "callable": called / n if n else 0.0,
         "matches_torch": correct / n if n else 0.0,
         "consistency": consistency_score(called, correct, n),
+        # Why kernels did not count as callable: "unavailable" means the executor could
+        # not run at all (no torch/triton), "unconfirmed_error" means every guessed input
+        # raised.  Read this before blaming the model.
+        "statuses": dict(sorted(histogram.items(), key=lambda kv: -kv[1])),
     }

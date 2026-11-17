@@ -219,3 +219,29 @@ def test_every_calibrator_accepts_extra_signals():
         VectorScaling().fit(logp, y),
     ):
         assert calibrator.transform(logp, extra).shape == logp.shape
+
+
+def test_vote_pooling_by_meaning_keeps_the_common_spelling():
+    """'the beatles' + 'beatles' are one answer; the winning spelling is the one seen most."""
+    from cairn.decoding.parse import trivia_key
+
+    replies = ["the beatles", "beatles", "the beatles", "elvis", "elvis"]
+    plain = majority_vote(replies, lambda a: a)
+    pooled = majority_vote(replies, lambda a: a, group_key=trivia_key)
+    assert plain.answer == "the beatles" and plain.share == pytest.approx(0.4)  # 2-2-1 split
+    assert pooled.answer == "the beatles" and pooled.share == pytest.approx(0.6)
+    assert pooled.counts == {"the beatles": 2.0, "beatles": 1.0, "elvis": 2.0}
+    # Pooling can change the winner: 2 + 2 spellings beat 3 votes for a different answer.
+    # Inside the winning group, equal spellings tie to the one seen first (same rule as before).
+    split = ["a mosquito", "mosquito", "mosquito", "a mosquito", "fly", "fly", "fly"]
+    assert majority_vote(split, lambda a: a).answer == "fly"
+    pooled = majority_vote(split, lambda a: a, group_key=trivia_key)
+    assert pooled.answer == "a mosquito" and pooled.share == pytest.approx(4 / 7)
+
+
+def test_trivia_key_drops_articles_quotes_and_punctuation():
+    from cairn.decoding.parse import trivia_key
+
+    assert trivia_key("The Beatles") == trivia_key('"beatles"') == "beatles"
+    assert trivia_key("foot-and-mouth disease") == "foot and mouth disease"
+    assert trivia_key("an apple") == "apple" and trivia_key("ant") == "ant"  # no over-stripping

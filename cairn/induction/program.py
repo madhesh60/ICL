@@ -52,6 +52,10 @@ class Attempt:
     code: str
     verify_accuracy: float
     problems: list[str] = field(default_factory=list)
+    # Why the reply ended: "stop" is normal, "length" means the token budget ran out
+    # (usually while still thinking), so no code could follow.
+    finish: str = ""
+    thinking: bool = True
 
 
 @dataclass
@@ -98,7 +102,7 @@ class ProgramInducer:
         max_rounds: int = 4,
         candidates_per_round: int = 2,
         accept_accuracy: float = 1.0,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,
         thinking: bool = True,
         limits: SandboxLimits | None = None,
         seed: int = 0,
@@ -132,6 +136,7 @@ class ProgramInducer:
         ]
         attempts: list[Attempt] = []
         feedback: tuple[tuple[str, str], ...] = ()
+        thinking = self.thinking
         for round_index in range(self.max_rounds):
             request = GenRequest(
                 messages=tuple(base) + feedback,
@@ -141,26 +146,41 @@ class ProgramInducer:
                 top_p=0.95,
                 n=self.candidates_per_round,
                 seed=self.seed + round_index,
-                thinking=self.thinking,
+                thinking=thinking,
                 tag="induce_program",
             )
             try:
-                replies = self.backend.generate(request).texts
+                response = self.backend.generate(request)
             except LLMError as err:
                 log.warning("program induction stopped: %s", err)
                 break
+            replies = response.texts
+            finishes = list(response.finish_reasons) + [""] * len(replies)
 
             best: Attempt | None = None
-            for reply in replies:
+            for reply, finish in zip(replies, finishes, strict=False):
                 code = extract_code(reply)
                 if not code:
-                    attempts.append(Attempt(round_index, reply[:200], 0.0, ["no code block found"]))
+                    why = (
+                        "token budget ran out before any code"
+                        if finish == "length"
+                        else "no code block found"
+                    )
+                    attempts.append(Attempt(round_index, reply[:200], 0.0, [why], finish, thinking))
+                    log.info("program round %d: %s", round_index, why)
                     continue
                 accuracy, wrong = _score(
                     run_function(code, [e.input for e in verify], limits=self.limits), verify
                 )
-                attempt = Attempt(round_index, code, accuracy, wrong)
+                attempt = Attempt(round_index, code, accuracy, wrong, finish, thinking)
                 attempts.append(attempt)
+                log.info(
+                    "program round %d: %.1f%% right on %d verify examples%s",
+                    round_index,
+                    100 * accuracy,
+                    len(verify),
+                    f"; first failure: {wrong[0][:160]!r}" if wrong else "",
+                )
                 if accuracy >= self.accept_accuracy:
                     confirm_accuracy, _ = _score(
                         run_function(code, [e.input for e in confirm], limits=self.limits), confirm
@@ -180,7 +200,18 @@ class ProgramInducer:
                     best = attempt
 
             if best is None:
-                feedback = (("user", "No Python code block was found. " + _ASK),)
+                # Not one reply contained code.  With thinking on, the usual reason is
+                # that the whole budget went into the thinking block.  Ask again without
+                # thinking: a five-line function does not need a long deliberation, and
+                # a plain reply cannot be swallowed by it.
+                if thinking:
+                    log.info(
+                        "program round %d gave no code; retrying without thinking", round_index
+                    )
+                    thinking = False
+                    feedback = ()
+                else:
+                    feedback = (("user", "No Python code block was found. " + _ASK),)
                 continue
             listing = "\n\n".join(best.problems) or "It fails on hidden cases."
             feedback = (

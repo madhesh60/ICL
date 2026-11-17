@@ -59,3 +59,5 @@ class TaskSpec:
     char_features: bool = False
     # Cheap model-free measurements of an input, fed to the stacked calibrator.
     signals: Callable[[str], tuple[float, ...]] | None = None
+    # Pools differently written answers into one vote (trivia: "the X" and "X").
+    vote_key: Callable[[str], str] | None = None

@@ -18,6 +18,7 @@ from cairn.decoding.parse import (
     norm_integer,
     norm_text,
     norm_trivia,
+    trivia_key,
 )
 from cairn.tasks.base import TaskSpec, View
 from cairn.tasks.signals import sentence_pair_overlap
@@ -139,6 +140,7 @@ TASKS: dict[int, TaskSpec] = {
         answer_rule="Reply with the answer only, in lower case, as short as the examples.",
         max_answer_tokens=24,
         char_features=True,
+        vote_key=trivia_key,
     ),
     8: TaskSpec(
         task_id=8,

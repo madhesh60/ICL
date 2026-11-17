@@ -188,3 +188,32 @@ Rules for the log: one change per row; record the seed; keep the raw outputs und
 - **I21** Context-length sweep with the real model: 30K vs 45K vs 60K on tasks 5/6/7 (H4).
 - **I22** Use the conformal set size as a per-input routing signal for *where* the
   per-input tail should come from (same-label neighbours vs diverse neighbours).
+
+## J. Results from the first real run (Kaggle, 2 x T4, 20 dev inputs per task, 2026-11-16)
+
+Full analysis: `06_FIRST_REAL_RUN.md`. Headlines, mapped to the hypotheses above:
+
+- **H1 (zero-null decoding) confirmed in practice:** no task produced an empty or ill-formed
+  answer; every input left the ladder with a valid string.
+- **Program induction (B, "the model teaches itself") did not fire at all** on tasks 1/3/4:
+  the induction prompt carried the whole 30K block with a 2K reply budget, and thinking ate
+  the budget. Fixed (48-example slice, 4K budget, no-think retry). The data is 100%
+  rule-consistent (O009), so an accepted program means ~100%.
+- **Conformal gating needs a second check.** Task 2's one-label sets were 29% accurate while
+  the coverage promise was (presumably) kept. New rule: singletons are trusted only if their
+  held-out accuracy clears 85%.
+- **Thinking helps counting (task 2: 92%) and hurts surface sentiment (task 5: 1/5).** Thin
+  evidence on task 5; structural reason; re-test with 100 inputs (E002).
+- **Task 6's overlap signal holds up with the real model** (100% on the 90% it was sure of).
+- **Task 7 is knowledge-bound** (both rungs ~20%). Spend no more design effort there beyond
+  not losing known answers to spelling splits (vote pooling added).
+- **Task 8 ran nothing** and did not say why. Outcome histogram added; test shapes made
+  Triton-friendly (multiples of 16). Still expected to be the weakest task.
+- **Cost:** a 5-vote thinking call is 30-40 s per input on this hardware; one-token scoring
+  1-2 s; an accepted program 0 s. Plan sessions from these numbers (06 section 4).
+
+New running questions:
+- Q8 What were the actual induction attempt outcomes in E000 (`notes.program` in the report)?
+  The next run prints them.
+- Q9 On task 8, is the dominant execution outcome `unconfirmed_error` (input guessing) or
+  `timeout` (compile time on T4)? The histogram decides the next fix.

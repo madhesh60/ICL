@@ -100,6 +100,22 @@ def norm_trivia(text: str) -> str | None:
     return out or None
 
 
+_ARTICLE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
+
+
+def trivia_key(answer: str) -> str:
+    """What two trivia answers must share to count as the same vote.
+
+    Leading articles, quotes and punctuation are dropped: "the beatles",
+    '"beatles"' and "beatles" are one answer.  The key is only used to pool
+    votes; the spelling that is finally written out is still one the model gave.
+    """
+    key = answer.lower().strip().strip("\"'`")
+    key = _ARTICLE.sub("", key)
+    key = re.sub(r"[^a-z0-9]+", " ", key)
+    return key.strip()
+
+
 def make_label_normalizer(labels: tuple[str, ...]) -> Normalizer:
     """Map a reply onto one of the allowed labels, ignoring case and stray words.
 

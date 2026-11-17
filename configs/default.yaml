@@ -1,5 +1,11 @@
 # Cairn settings.  Every key is checked at start-up: a typo is an error, not a silent no-op.
 # Run with:  cairn --config configs/default.yaml <command>
+#
+# Per-task overrides at the bottom carry the evidence they rest on.  "E000" is the first
+# real Qwen3-4B run (2 x T4, 20 dev inputs per task, 2026-11-16); see
+# docs/04_EXPERIMENT_LOG.md and docs/06_FIRST_REAL_RUN.md.  Twenty inputs is a weak
+# measurement (95% range about +/-20 points), so each override also states the reason the
+# number is believable, not just the number.
 
 backend:
   kind: openai                         # any OpenAI-style server: vLLM, FlagScale, llama.cpp ...
@@ -32,9 +38,14 @@ defaults:
     restate_rule: true          # repeat the output rule right before the input
   strategy:
     use_program: true           # exact tasks: model writes a program, we verify it
+    induction_examples: 48      # the program-writing prompt shows this many examples (not 30K tokens)
+    induction_max_tokens: 4096  # room for thinking AND the code; E000 ran out at 2048 and got no code
+    induction_rounds: 4
     use_scoring: true           # classification: read label probabilities
     calibration: stack          # none | batch | vector | stack (stack adds model-free signals)
     conformal_alpha: 0.1        # allowed miss rate of the "plausible labels" set
+    min_singleton_accuracy: 0.85  # the cheap rung may stop the ladder only if its sure answers
+                                  # were this accurate on held-out examples (E000 task 2: 29%)
     escalate: true              # unsure -> think + vote
     vote_n: 5
     think_max_tokens: 1024
@@ -44,10 +55,25 @@ defaults:
     induce_guidelines: false    # turn on per task after `cairn tune` says it helps
 
 tasks:
-  1: { context: { tail_k: 8 } }
-  2: { strategy: { think_max_tokens: 768 } }
-  3: { context: { tail_k: 8 } }
-  4: { context: { tail_k: 8 } }
+  # Exact-procedure tasks.  The program path should answer everything; the settings below
+  # are the backup for inputs (or runs) where it does not.  E000: 15% of task-1 inputs got no
+  # valid answer from 5 thinking votes at 1024 tokens; working through 45 pairwise
+  # differences needs more room than that.
+  1: { context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
+  3: { context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
+  4: { context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
+  # Counting nouns/verbs.  E000: one-token scoring was right on 29% of the inputs it was
+  # sure about; thinking + voting was right on 92%.  The reason is structural, not noise:
+  # counting needs the words to be listed, which a single next-token guess cannot do.
+  2: { strategy: { use_scoring: false, think_max_tokens: 768 } }
+  # Tweet sadness.  E000: the scoring rung (stacked calibration) was right on 87% of the
+  # inputs it was sure about; thinking + voting on the unsure rest was right on 1 of 5.
+  # Binary sentiment is a surface judgement a 4B model makes better fast than slow, so
+  # unsure inputs take the calibrated best guess instead.  Re-test with >= 100 inputs.
+  5: { strategy: { escalate: false } }
+  # Same genre: the sentence-overlap signal carries it (E000: 100% on the 90% sure inputs).
+  # Escalation stays on; it touches few inputs and 1-of-2 is no evidence either way.
+  6: {}
   7:
     context: { n_clusters: 4, tail_k: 16 }      # trivia: topic-specific examples help the tail
   8:

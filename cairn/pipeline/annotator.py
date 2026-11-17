@@ -66,6 +66,14 @@ class StrategyConfig:
     # conformal gate; `accept_confidence` is used as a plain threshold instead.
     conformal_alpha: float | None = 0.1
     accept_confidence: float = 0.75
+    # The cheap rung may only end the ladder if, on held-out examples, its "sure" answers
+    # were right at least this often.  Measured on the second calibration half; needs at
+    # least `min_singleton_count` sure answers there to be judged at all.  Below the bar,
+    # every input goes to the expensive rung.  (First real run, task 2: the gate said
+    # "sure" on 35% of inputs and was right on 29% of them.  A coverage promise is not an
+    # accuracy promise; this check is.)
+    min_singleton_accuracy: float = 0.85
+    min_singleton_count: int = 10
     # Climb to the expensive rung when the cheap one is unsure.
     escalate: bool = True
     vote_n: int = 5
@@ -75,6 +83,14 @@ class StrategyConfig:
     cheap_samples: int = 3
     agree_share: float = 0.67
     induce_guidelines: bool = False
+    # Program induction (exact-procedure tasks).  The model sees a SHORT block of
+    # examples, not the 30K-token annotation block: writing a five-line rule needs a
+    # few dozen cases and a clear head, and the program is then proven on hundreds of
+    # held-out examples anyway.  The budget covers thinking plus code; if a round still
+    # yields no code, the next round runs without thinking.
+    induction_examples: int = 48
+    induction_max_tokens: int = 4096
+    induction_rounds: int = 4
     # Code task.
     codegen_rounds: int = 3
     codegen_candidates: int = 2
@@ -108,6 +124,7 @@ class Annotator:
         program_answers: dict[str, str | None] | None = None,
         memory: AnnotationMemory | None = None,
         signal_fn: Callable[[str], np.ndarray] | None = None,
+        trust_scores: bool = True,
     ) -> None:
         self.spec = spec
         self.builder = builder
@@ -118,6 +135,9 @@ class Annotator:
         self.program_answers = program_answers or {}
         self.memory = memory
         self.signal_fn = signal_fn
+        # False when held-out examples showed that the cheap rung's "sure" answers are
+        # not reliable: then every input climbs to the expensive rung.
+        self.trust_scores = trust_scores
 
     # ------------------------------------------------------------------ public
 
@@ -196,7 +216,12 @@ class Annotator:
             thinking=True,
             tag="think_vote",
         )
-        return majority_vote(self.backend.generate(request).texts, self._clean, allowed=allowed)
+        return majority_vote(
+            self.backend.generate(request).texts,
+            self._clean,
+            allowed=allowed,
+            group_key=self.spec.vote_key,
+        )
 
     # ------------------------------------------------------------------ ladder
 
@@ -231,11 +256,12 @@ class Annotator:
         else:
             keep = [top] if probs[top] >= cfg.accept_confidence else []
         meta.update(probs=[round(float(p), 4) for p in probs], plausible=[labels[i] for i in keep])
-        if len(keep) == 1 or not cfg.escalate:
+        if not cfg.escalate or (len(keep) == 1 and self.trust_scores):
             return Prediction(query.id, labels[top], float(probs[top]), "score", meta)
 
         # Unsure.  Think and vote, restricted to the labels that are still plausible.
-        allowed = tuple(labels[i] for i in keep) if len(keep) >= 2 else labels
+        # When the cheap rung is not trusted at all, its label sets are not either.
+        allowed = tuple(labels[i] for i in keep) if len(keep) >= 2 and self.trust_scores else labels
         vote = self._think_vote(prompt, allowed)
         meta["votes"] = vote.counts
         if vote.answer is None:
@@ -254,7 +280,7 @@ class Annotator:
                     prompt, n=cfg.cheap_samples, temperature=0.7, tag="generate_sample"
                 )
                 replies.extend(a for a in cheap if a is not None)
-            vote = majority_vote(replies, lambda a: a)
+            vote = majority_vote(replies, lambda a: a, group_key=self.spec.vote_key)
             meta["votes"] = vote.counts
             if vote.answer is not None and (not cfg.escalate or vote.share >= cfg.agree_share):
                 return Prediction(query.id, vote.answer, vote.share, "generate", meta)
@@ -263,7 +289,7 @@ class Annotator:
             # One count per reply, with the direct answers first so that they win ties.
             for answer, count in thought.counts.items():
                 replies.extend([answer] * int(count))
-            vote = majority_vote(replies, lambda a: a)
+            vote = majority_vote(replies, lambda a: a, group_key=self.spec.vote_key)
             meta["votes"] = vote.counts
             if vote.answer is not None:
                 return Prediction(query.id, vote.answer, vote.share, "think_vote", meta)

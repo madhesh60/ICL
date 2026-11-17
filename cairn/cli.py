@@ -232,16 +232,61 @@ def _run_one(
             f"runs {quality['callable']:.0%}, matches PyTorch {quality['matches_torch']:.0%}, "
             f"consistency score {quality['consistency']:.3f} (n={quality['n']})"
         )
+        print(f"    execution outcomes: {quality['statuses']}")
     else:
         report = evaluate(predictions, queries)
         summary["eval"] = report.to_json()
         print(f"task {task_id} [{args.split}] {report.line()}")
         for source, row in report.by_source.items():
             print(f"    {source:16s} {row['share']:.0%} of inputs, accuracy {row['accuracy']:.1%}")
+    _print_preparation_notes(runner.notes)
     (task_dir / f"{args.split}.report.json").write_text(
         json.dumps(summary, indent=2, ensure_ascii=False, default=str), encoding="utf-8"
     )
     return summary
+
+
+def _print_preparation_notes(notes: dict[str, object]) -> None:
+    """One line per preparation decision, so a log alone tells what the run relied on."""
+    program = notes.get("program")
+    if isinstance(program, dict):
+        if program.get("accepted"):
+            print(
+                f"    program: ACCEPTED after {program['attempts']} attempt(s); verified on "
+                f"{program['verified_on']} + {program['confirmed_on']} held-out examples"
+            )
+        else:
+            print(
+                f"    program: not accepted after {program['attempts']} attempt(s), best verify "
+                f"accuracy {program['best_verify_accuracy']:.1%}; answers came from the model"
+            )
+            for row in program.get("attempt_log", [])[:6]:  # type: ignore[union-attr]
+                print(
+                    f"        round {row['round']} thinking={row['thinking']} finish={row['finish'] or '?'} "
+                    f"verify={row['verify_accuracy']:.1%} {row['problem'][:90]}"
+                )
+    elif isinstance(program, str):
+        print(f"    program: {program}")
+    calibration = notes.get("calibration")
+    if isinstance(calibration, dict):
+        line = (
+            f"    calibration: {calibration['method']} on {calibration['fitted_on']} examples, "
+            f"held-out accuracy {calibration['accuracy_before']:.1%} -> {calibration['accuracy_after']:.1%}"
+        )
+        conformal = calibration.get("conformal")
+        if isinstance(conformal, dict):
+            line += (
+                f"; sure on {conformal['singleton_rate']:.0%} of held-out inputs, right on "
+                f"{conformal['singleton_accuracy']:.0%} of those"
+                + (
+                    ""
+                    if conformal.get("singletons_trusted", True)
+                    else " -> NOT trusted, all inputs escalate"
+                )
+            )
+        print(line)
+    elif isinstance(calibration, str):
+        print(f"    calibration: {calibration}")
 
 
 def _open_journal(

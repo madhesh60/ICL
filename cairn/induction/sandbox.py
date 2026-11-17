@@ -23,6 +23,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -70,16 +71,22 @@ try:
 except BaseException as err:
     results = [{"ok": False, "error": f"load failed: {type(err).__name__}: {err}"[:300]}] * len(job["inputs"])
 else:
-    signal.signal(signal.SIGALRM, _timeout)
+    # Per-call timeout via an alarm signal (POSIX).  Windows has no SIGALRM; there the
+    # wall-clock timeout of the whole child process is the only per-call protection.
+    alarm = hasattr(signal, "SIGALRM")
+    if alarm:
+        signal.signal(signal.SIGALRM, _timeout)
     for item in job["inputs"]:
-        signal.setitimer(signal.ITIMER_REAL, job["per_call_s"])
+        if alarm:
+            signal.setitimer(signal.ITIMER_REAL, job["per_call_s"])
         try:
             value = func(item)
             results.append({"ok": True, "value": value if isinstance(value, str) else repr(value)})
         except BaseException as err:
             results.append({"ok": False, "error": f"{type(err).__name__}: {err}"[:300]})
         finally:
-            signal.setitimer(signal.ITIMER_REAL, 0)
+            if alarm:
+                signal.setitimer(signal.ITIMER_REAL, 0)
 real_stdout.write(json.dumps(results))
 """
 
@@ -97,6 +104,18 @@ class CallResult:
     ok: bool
     value: str = ""
     error: str = ""
+
+
+def _child_env() -> dict[str, str]:
+    """The smallest environment the child can start with.
+
+    Nothing from the user's environment reaches the candidate code.  Windows is the
+    exception that proves the rule: a process there cannot even start without
+    SYSTEMROOT, so that one variable is passed through.
+    """
+    if sys.platform == "win32":
+        return {"SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows")}
+    return {}
 
 
 def check_source(code: str, required_function: str = "solve") -> list[str]:
@@ -165,7 +184,7 @@ def run_function(
                 text=True,
                 timeout=limits.wall_s,
                 cwd=workdir,
-                env={},
+                env=_child_env(),
                 # No preexec_fn: it is unsafe in programs that use threads (Cairn does).
                 # The driver applies the limits itself as its first step instead.
             )

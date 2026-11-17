@@ -89,29 +89,37 @@ SCALARS = {
     "k": [2], "n": [2], "p": [2.0, 0.5], "exponent": [2.0], "alpha": [1.0], "beta": [1.0],
     "value": [0.5], "min": [-0.5], "max": [0.5], "eps": [1e-5], "diagonal": [0],
     "shifts": [1], "repeats": [2], "chunks": [2], "sections": [2], "split_size_or_sections": [2],
-    "num_classes": [12], "groups": [1], "kernel_size": [2], "stride": [1], "padding": [0],
+    "num_classes": [16], "groups": [1], "kernel_size": [2], "stride": [1], "padding": [0],
     "threshold": [0.1], "negative_slope": [0.01], "lambd": [0.5], "scale_factor": [2],
     "output_size": [2], "start_dim": [0], "end_dim": [-1], "keepdim": [False], "num_groups": [1],
-    "size": [(6, 10)], "shape": [(60,), (10, 6)], "sorted": [True], "upper": [False],
+    "size": [(32, 64)], "shape": [(2048,), (64, 32)], "sorted": [True], "upper": [False],
     "source": [0], "destination": [1], "offset": [0], "steps": [5], "decimals": [1],
-    "training": [False], "inplace": [False], "normalized_shape": [10], "num_features": [10],
+    "training": [False], "inplace": [False], "normalized_shape": [64], "num_features": [64],
 }  # fmt: skip
 INDEX_NAMES = {"index", "indices", "idx", "target", "labels"}
 
 # Tensor shapes to try, by number of tensor arguments.  Ordered from "same shape"
 # (elementwise maths) to matrix products, linear layers and convolutions.
+#
+# Sizes are multiples of 16 and powers of two on purpose.  Triton kernels have hard
+# rules that small odd shapes break even when the kernel is right: `tl.dot` needs every
+# side to be at least 16, `tl.arange` needs a power-of-two length, and many generated
+# kernels pick a block size from the input size.  A correct kernel that is handed a
+# (6, 10) tensor raises, and we would wrongly count it as broken.  The odd shapes at the
+# end stay as a last resort for functions that PyTorch only accepts in such shapes.
 SHAPES = {
     0: [()],
-    1: [((6, 10),), ((5, 5),), ((2, 3, 8, 8),), ((10,),)],
+    1: [((32, 64),), ((64,),), ((16, 16),), ((2, 4, 16, 16),), ((6, 10),)],
     2: [
-        ((6, 10), (6, 10)), ((6, 10), (10, 4)), ((6, 10), (10,)), ((2, 6, 10), (2, 10, 4)),
-        ((5, 5), (5, 5)), ((5, 5), (5, 3)), ((5, 5), (5,)), ((6, 10), (4, 10)),
-        ((2, 3, 8, 8), (4, 3, 3, 3)), ((10,), (10,)),
+        ((32, 64), (32, 64)), ((32, 64), (64, 16)), ((32, 64), (64,)), ((2, 32, 64), (2, 64, 16)),
+        ((16, 16), (16, 16)), ((16, 16), (16, 32)), ((16, 16), (16,)), ((32, 64), (16, 64)),
+        ((2, 4, 16, 16), (8, 4, 3, 3)), ((64,), (64,)), ((6, 10), (6, 10)), ((6, 10), (10, 4)),
     ],
     3: [
-        ((6, 10), (6, 10), (6, 10)), ((2, 6, 10), (2, 10, 4), (2, 6, 4)), ((6, 4), (6, 10), (10, 4)),
-        ((6, 10), (4, 10), (4,)), ((2, 3, 8, 8), (4, 3, 3, 3), (4,)), ((6,), (6, 10), (10,)),
-        ((2, 6, 4), (2, 6, 10), (2, 10, 4)),
+        ((32, 64), (32, 64), (32, 64)), ((2, 32, 64), (2, 64, 16), (2, 32, 16)),
+        ((32, 16), (32, 64), (64, 16)), ((32, 64), (16, 64), (16,)),
+        ((2, 4, 16, 16), (8, 4, 3, 3), (8,)), ((32,), (32, 64), (64,)),
+        ((2, 32, 16), (2, 32, 64), (2, 64, 16)), ((6, 10), (6, 10), (6, 10)),
     ],
 }  # fmt: skip
 
@@ -131,7 +139,7 @@ def argument_guesses(params):
         p["name"] for p in required if p["name"] not in SCALARS and p["name"] not in INDEX_NAMES
     ]
     n_tensors = len(tensor_slots) + (2 if star else 0)
-    shape_sets = SHAPES.get(n_tensors) or [tuple((6, 10) for _ in range(n_tensors))]
+    shape_sets = SHAPES.get(n_tensors) or [tuple((32, 64) for _ in range(n_tensors))]
     scalar_slots = [p["name"] for p in required if p["name"] in SCALARS]
     scalar_sets = list(itertools.product(*(SCALARS[name] for name in scalar_slots)))[:6] or [()]
     for shapes in shape_sets:

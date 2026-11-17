@@ -165,15 +165,15 @@ If the rule turns out to forbid execution, we still have the pure path, and the 
 ## 8. Phased schedule
 
 ### Phase 0 — Setup (Day 1–2)
-- [ ] Decide GPU option; get a Linux GPU session running.
-- [ ] Download Qwen3-4B; apply YaRN patch; serve with vLLM (prefix caching ON); run `api_test.py`-style smoke test incl. `logprobs`, `guided_choice`, `n`.
-- [ ] Create `solution/` skeleton; data loader; seeded dev split; token-length cache.
+- [x] Decide GPU option; get a Linux GPU session running. (Kaggle, 2 x T4, 2026-11-16)
+- [x] Download Qwen3-4B; apply YaRN patch; serve with vLLM (prefix caching ON); run `api_test.py`-style smoke test incl. `logprobs`, `guided_choice`, `n`. (`cairn doctor`: all six checks pass)
+- [x] Create the package (`cairn/`, not `solution/`); data loader; hash-based dev split; token counter.
 - [ ] Reproduce the official baseline on dev (fix its path bugs locally, do not edit the upstream repo).
 
 ### Phase 1 — Quick wins (Day 2–4)
-- [ ] Chat template + explicit thinking control; `guided_choice`/`guided_regex`; strict parser → **0 nulls**.
-- [ ] Context builder that meets ≥30K with shared prefix + kNN tail.
-- [ ] Run all 8 tasks on dev. This alone should beat the baseline by a wide margin.
+- [x] Chat template + explicit thinking control; structured outputs; strict parser → **0 nulls** (confirmed in E000).
+- [x] Context builder that meets ≥30K with shared prefix + kNN tail.
+- [x] Run all 8 tasks on dev (E000, 20 inputs each; see `06_FIRST_REAL_RUN.md`). Next: 60 inputs with the E000 fixes.
 
 ### Phase 2 — Task-specific algorithms (Day 4–10)
 - [ ] Tasks 1/3/4: program induction + verification; pure-ICL thinking path as backup.

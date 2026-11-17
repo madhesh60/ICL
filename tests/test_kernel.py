@@ -167,3 +167,35 @@ def test_code_quality_summary():
         and quality["matches_torch"] == 0.25
     )
     assert quality["consistency"] == pytest.approx(consistency_score(2, 1, 4))
+
+
+def test_code_quality_explains_why_kernels_were_not_callable():
+    """E000 reported 'runs 0%' with no reason.  The summary now carries the outcomes."""
+    from cairn.tasks.kernel_exec import code_quality
+    from cairn.types import Prediction
+
+    predictions = [
+        Prediction("a", "x", meta={"tier": 2, "exec_status": "unconfirmed_error"}),
+        Prediction("b", "x", meta={"tier": 2, "exec_status": "unconfirmed_error"}),
+        Prediction("c", "x", meta={"tier": 2, "exec_status": "unavailable"}),
+        Prediction("d", "x", meta={"tier": 4, "exec_status": "exec_ok"}),
+    ]
+    quality = code_quality(predictions)
+    assert quality["statuses"] == {"unconfirmed_error": 2, "unavailable": 1, "exec_ok": 1}
+    assert quality["callable"] == 0.25
+
+
+def test_driver_guesses_triton_friendly_shapes_first():
+    """tl.dot needs sides >= 16 and tl.arange needs powers of two; a correct kernel fed a
+    (6, 10) tensor raises.  The first guesses must therefore be 16-multiples."""
+    import re
+    from pathlib import Path
+
+    source = Path("cairn/tasks/_kernel_driver.py").read_text(encoding="utf-8")
+    shapes_block = source[
+        source.index("SHAPES = {") : source.index("}  # fmt: skip", source.index("SHAPES = {"))
+    ]
+    first_two_tensor = re.search(r"2: \[\s*\(\((\d+), (\d+)\), \((\d+), (\d+)\)\)", shapes_block)
+    assert first_two_tensor is not None
+    sides = [int(v) for v in first_two_tensor.groups()]
+    assert all(side % 16 == 0 for side in sides), sides

@@ -1,3 +1,4 @@
+import sys
 from itertools import pairwise
 
 import pytest
@@ -34,14 +35,29 @@ def test_check_source_rejects_dangerous_code():
     assert check_source(RIGHT) == []
 
 
-def test_sandbox_contains_loops_memory_and_crashes():
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="per-call alarms and OS resource limits exist only on POSIX; on Windows the "
+    "wall-clock timeout of the child process is the only limit",
+)
+
+
+def test_sandbox_runs_code_and_reports_crashes():
+    crashed = run_function("def solve(t):\n    return 1 / 0", ["x"])
+    assert "ZeroDivisionError" in crashed[0].error
+    assert run_function(RIGHT, ["[1, 5, 9]", "[3, 3]"])[0].value == "4"
+    stuck = run_function(
+        "def solve(t):\n    while True:\n        pass", ["x"], limits=SandboxLimits(wall_s=3)
+    )
+    assert not stuck[0].ok and "timeout" in stuck[0].error.lower()
+
+
+@POSIX_ONLY
+def test_sandbox_contains_loops_and_memory_per_call():
     limits = SandboxLimits(per_call_s=0.3, wall_s=10)
     loop = run_function("def solve(t):\n    while True:\n        pass", ["x", "y"], limits=limits)
     assert all(not r.ok and "Timeout" in r.error for r in loop)
     assert "MemoryError" in run_function("def solve(t):\n    return 'a' * 10**10", ["x"])[0].error
-    crashed = run_function("def solve(t):\n    return 1 / 0", ["x"])
-    assert "ZeroDivisionError" in crashed[0].error
-    assert run_function(RIGHT, ["[1, 5, 9]", "[3, 3]"])[0].value == "4"
 
 
 def test_sandbox_cannot_import_third_party_or_reach_files():
@@ -92,9 +108,36 @@ def test_guideline_inducer_maps_then_reduces():
     assert GuidelineInducer(FunctionBackend(lambda r: "nothing useful")).induce("d", ["x"]) == ""
 
 
+@POSIX_ONLY
 def test_cpu_limit_is_reported_clearly():
     limits = SandboxLimits(cpu_s=1, per_call_s=60, wall_s=20)
     result = run_function(
         "def solve(t):\n    n = 0\n    while True:\n        n += 1", ["a"], limits=limits
     )
     assert "CPU time limit" in result[0].error
+
+
+def test_no_code_with_thinking_on_retries_without_thinking():
+    """E000 failure mode: the whole reply budget went into thinking, so no code came back.
+
+    The inducer must notice (finish reason "length"), switch thinking off for the next
+    round, and still accept a correct program.
+    """
+    from cairn.llm import GenResponse
+
+    seen: list[bool] = []
+
+    def reply(request):
+        seen.append(request.thinking)
+        if request.thinking:
+            return GenResponse(texts=[""] * request.n, finish_reasons=["length"] * request.n)
+        return GenResponse(texts=[f"```python\n{RIGHT}```"] * request.n, finish_reasons=["stop"])
+
+    result = ProgramInducer(FunctionBackend(reply), candidates_per_round=1).induce(
+        "gap", "examples", _gap_examples(20), _gap_examples(20, 100)
+    )
+    assert result.accepted
+    assert seen == [True, False]  # one thinking round, then one plain round
+    first = result.attempts[0]
+    assert first.finish == "length" and "budget" in first.problems[0] and first.thinking is True
+    assert result.attempts[1].thinking is False

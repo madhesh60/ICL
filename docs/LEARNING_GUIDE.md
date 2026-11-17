@@ -51,6 +51,9 @@ commands. Do the exercises at the end. Then write your own notes in
 24. Interview questions with short answers
 25. Glossary
 
+**Part D — the first real run**
+26. Reading a real result (pointer to `06_FIRST_REAL_RUN.md`)
+
 ---
 
 # Part A — the ideas
@@ -870,3 +873,30 @@ One day, in this order (each file is short and starts with a "why" explanation):
 before you build, put the right examples where the model reads best, never lose an answer,
 spend effort only where a measured check says "unsure", and make every failure loud,
 labelled and recoverable.
+
+---
+
+# Part D — the first real run
+
+## 26. Reading a real result
+
+Everything above was written before Qwen3-4B had run once. On 2026-11-16 it ran on Kaggle,
+and the result was the best lesson in this project so far: three of the eight numbers were
+produced by broken machinery rather than by the model, and the log *looked* fine.
+
+The full account is in [`06_FIRST_REAL_RUN.md`](06_FIRST_REAL_RUN.md). Read it after
+sections 11, 13 and 19 of this guide. It covers:
+
+* **How to check that a result is real** before reading it (config, server evidence, split,
+  metric, timing, error bar).
+* **Reading the breakdown instead of the average**, and treating a *missing* line as the
+  loudest evidence (the program path left no trace on tasks 1, 3, 4).
+* **The difference between the guarantee you have and the one you need**: conformal
+  coverage versus the accuracy of one-label sets (task 2).
+* **Ranking hypotheses by the cost of testing them**: "the labels are noisy" took one minute
+  to rule out and would have invalidated every other fix.
+* **A twelve-step way of thinking** (its section 5) that applies to any result, not only this one.
+* **Predictions for the next run**, written before it happens, so judgement can be scored too.
+
+**Remember:** the first real run is not where the project is finished; it is where you find
+out which of your beliefs were about the model and which were about your own tooling.

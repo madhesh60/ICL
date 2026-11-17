@@ -351,3 +351,64 @@ def test_runner_stack_mode_uses_signals_at_fit_and_predict_time(counter):
     assert runner.notes["calibration"]["method"] == "stack"
     assert runner.signal_fn is not None and runner.signal_fn("lonely tears").shape == (2,)
     assert report.accuracy > 0.6
+
+
+def test_untrusted_scores_send_every_input_to_think_and_vote(counter):
+    """A one-label conformal set normally ends the ladder.  When held-out examples showed
+    the sure answers are not accurate, the cheap rung is only a prior and everything
+    climbs; the vote is then over all labels, not the cheap rung's (distrusted) set."""
+    spec, builder = _spec_builder(counter)
+    backend = _scorer(0.97, think_answer="Not sad")
+    conformal = SplitConformal(0.1).fit(np.array([[0.05, 0.95]] * 40), [1] * 40)
+    trusted = Annotator(spec, builder, backend, conformal=conformal).annotate(Query("q", "x"))
+    assert trusted.source == "score" and trusted.answer == "Sad"
+    doubted = Annotator(spec, builder, backend, conformal=conformal, trust_scores=False).annotate(
+        Query("q", "x")
+    )
+    assert doubted.source == "think_vote" and doubted.answer == "Not sad"
+    assert doubted.meta["plausible"] == ["Sad"]  # the cheap rung's opinion is still recorded
+
+
+def test_runner_distrusts_a_cheap_rung_that_is_confidently_wrong(counter):
+    """Held-out calibration examples catch a scorer that is sure and wrong.
+
+    The fake scorer answers 'Sad' with 97% confidence for everything.  Two thirds of the
+    synthetic pool is 'Not sad', so its sure answers are right about a third of the time.
+    The runner must notice on the calibration half and stop trusting singletons."""
+    pool = make_sentiment_pool(1500)
+    task = TaskData(5, "toy", "sad?", tuple(pool), ())
+    config = RunConfig(
+        context=CTX,
+        calib_limit=120,
+        workers=2,
+        # alpha 0.5 makes the conformal sets small, so the gate has sure answers to judge.
+        strategy=StrategyConfig(calibration="vector", conformal_alpha=0.5),
+    )
+    runner = TaskRunner(task, _scorer(0.97, think_answer="Not sad"), counter, config)
+    runner.prepare(runner.splits.as_queries("dev")[:10])
+    conformal = runner.notes["calibration"]["conformal"]
+    assert conformal["singletons_trusted"] is False
+    assert conformal["singleton_count"] >= 10
+    predictions = runner.run(runner.splits.as_queries("dev")[:6])
+    assert {p.source for p in predictions} == {"think_vote"}
+
+
+def test_program_induction_sees_a_short_example_block(counter):
+    """The program-writing prompt gets a few dozen examples, not the 30K-token block."""
+    pool = [Example(f"e{i}", f"[{i}, {i + 3}]", "3") for i in range(600)]
+    task = TaskData(1, "gap", "smallest gap", tuple(pool), ())
+    prompts: list[str] = []
+
+    def reply(request):
+        if request.tag == "induce_program":
+            prompts.append(request.messages[-1][1])
+            return "```python\ndef solve(text):\n    return '3'\n```"
+        return "3"
+
+    config = RunConfig(context=CTX, calib_limit=60, strategy=StrategyConfig(induction_examples=10))
+    runner = TaskRunner(task, FunctionBackend(reply), counter, config)
+    runner.prepare(runner.splits.as_queries("dev")[:5])
+    assert runner.notes["program"]["accepted"] is True
+    assert runner.notes["program"]["examples_shown"] == 10
+    assert prompts and prompts[0].count("Input: ") == 10
+    assert runner.notes["program"]["attempt_log"][0]["verify_accuracy"] == 1.0
