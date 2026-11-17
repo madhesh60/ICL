@@ -7,13 +7,16 @@
 # it stopped.  To make a run survive the session, "Save Version" the notebook: only
 # /kaggle/working is kept.
 #
-# Settings you will actually change are at the top.  First run used TASKS="1 2 3 4 5 6 7 8"
-# and LIMIT=20 (2026-11-16, docs/results/kaggle_run_2026-11-16_raw.md).  Twenty inputs gives
-# a 95% range of about +/- 20 points; 60 brings it to about +/- 12.  Start with the exact
-# tasks (1 3 4): with a verified program they take minutes, not hours.
+# Settings you will actually change are at the top.  Runs so far: E000 (LIMIT=20, 2026-11-16)
+# and E001 (LIMIT=60, 2026-11-17); raw logs in docs/results/.  60 inputs gives a 95% range of
+# about +/- 12 points.  The exact tasks (1 3 4) go first: with a verified program they take
+# minutes.  Task 8 is always measured on TEST inputs (LIMIT8 of them): its metric needs no
+# gold answer, and the demonstration kernels carry no wrapper signature, so dev inputs can
+# never be executed (E001: 24/24 "not_run").
 
 TASKS="${TASKS:-1 3 4 2 5 6 7 8}"
 LIMIT="${LIMIT:-60}"
+LIMIT8="${LIMIT8:-24}"              # task 8 in a dev pass: this many test inputs, scored without gold
 SPLIT="${SPLIT:-dev}"               # dev = scored on held-out examples; test = submission files
 BRANCH="${BRANCH:-claude/ai-project-enhancement-z6ct2n}"
 REPO_URL="${REPO_URL:-https://github.com/madhesh60/ICL.git}"
@@ -121,6 +124,8 @@ for t in $TASKS; do
   echo; echo "------------------------------------------ task $t"
   if [ "$SPLIT" = "test" ]; then
     cairn --config configs/default.yaml -v run --task "$t" --split test --run-dir "$RUNS" || echo "task $t FAILED; continuing"
+  elif [ "$t" = "8" ]; then
+    cairn --config configs/default.yaml -v run --task 8 --split test --limit "$LIMIT8" --run-dir "$RUNS" || echo "task 8 FAILED; continuing"
   else
     cairn --config configs/default.yaml -v run --task "$t" --split "$SPLIT" --limit "$LIMIT" --run-dir "$RUNS" || echo "task $t FAILED; continuing"
   fi
@@ -130,7 +135,10 @@ say "SUMMARY"
 python - "$RUNS" "$SPLIT" <<'PY'
 import json, pathlib, sys
 root, split = pathlib.Path(sys.argv[1]), sys.argv[2]
-for path in sorted(root.glob(f"task*/{split}.report.json")):
+paths = sorted(root.glob(f"task*/{split}.report.json"))
+if split != "test":
+    paths += sorted(root.glob("task8/test.report.json"))   # task 8 is measured on test inputs
+for path in paths:
     r = json.loads(path.read_text())
     t, secs = r.get("task", path.parent.name), r.get("seconds", 0)
     if "eval" in r:
@@ -145,6 +153,9 @@ for path in sorted(root.glob(f"task*/{split}.report.json")):
     prog = notes.get("program")
     if isinstance(prog, dict):
         print(f"        program accepted={prog['accepted']} attempts={prog['attempts']} best_verify={prog['best_verify_accuracy']:.1%}")
+    pol = notes.get("policy")
+    if isinstance(pol, dict):
+        print(f"        policy {pol['chosen']}: cheap {pol['cheap_accuracy']:.0%} vs thinking {pol['costly_accuracy']:.0%} on {pol['probe_examples']} held-out inputs")
     cal = notes.get("calibration")
     if isinstance(cal, dict) and isinstance(cal.get("conformal"), dict):
         c = cal["conformal"]

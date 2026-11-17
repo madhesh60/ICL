@@ -76,6 +76,7 @@ def test_program_is_repaired_from_feedback_then_accepted():
     assert result.program.confirm_accuracy == 1.0
     feedback = backend.requests[1].messages[-1][1]
     assert "Expected:" in feedback and "Got:" in feedback  # failures were shown back
+    assert "Call:     solve('[" in feedback  # with repr(), so the input's type is visible
 
 
 def test_memorising_program_is_caught_by_the_hidden_confirm_set():
@@ -141,3 +142,33 @@ def test_no_code_with_thinking_on_retries_without_thinking():
     first = result.attempts[0]
     assert first.finish == "length" and "budget" in first.problems[0] and first.thinking is True
     assert result.attempts[1].thinking is False
+
+
+def test_the_e001_type_confusion_is_named_and_a_repeat_is_called_out():
+    """E001 task 4: ''.join(text) joins the characters of a str and returns it unchanged.
+
+    The model wrote it eight times.  The feedback must (1) say the function returned its
+    input unchanged, and (2) say so again, louder, when the same code comes back."""
+    lazy = "def solve(text):\n    return ''.join(text)\n"
+    right = "import ast\ndef solve(text):\n    return ''.join(ast.literal_eval(text))\n"
+    backend = ScriptedBackend(
+        [f"```python\n{lazy}```", f"```python\n{lazy}```", f"```python\n{right}```"]
+    )
+    verify = [Example(f"v{i}", str(["a", str(i), "b"]), f"a{i}b") for i in range(12)]
+    confirm = [Example(f"c{i}", str(["x", "y", str(i)]), f"xy{i}") for i in range(12)]
+    result = ProgramInducer(backend, candidates_per_round=1).induce("join", "ex", verify, confirm)
+    assert result.accepted
+    first, second = backend.requests[1].messages[-1][1], backend.requests[2].messages[-1][1]
+    assert "returned its input unchanged" in first and "same function before" not in first
+    assert "same function before" in second
+    assert result.attempts[1].repeated is True
+
+
+def test_a_non_string_return_is_reported_as_such():
+    listy = "import ast\ndef solve(text):\n    return ast.literal_eval(text)\n"
+    backend = ScriptedBackend([f"```python\n{listy}```", f"```python\n{RIGHT}```"])
+    result = ProgramInducer(backend, candidates_per_round=1).induce(
+        "gap", "ex", _gap_examples(12), _gap_examples(12, 100)
+    )
+    assert "returned a list, not a str" in backend.requests[1].messages[-1][1]
+    assert result.accepted

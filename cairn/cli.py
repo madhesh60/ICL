@@ -220,9 +220,12 @@ def _run_one(
     }
     if args.split == "test":
         write_task_file(task_dir / f"openseek-{task_id}.jsonl", predictions)
-    elif runner.spec.kind == "code":
+    if runner.spec.kind == "code":
         # Code has no single right string, so exact match says nothing.  Report how far
-        # each kernel got instead, and the competition's consistency score.
+        # each kernel got instead, and the competition's consistency score.  This needs no
+        # gold answer, so it is measured on the TEST inputs too, and for task 8 it must be:
+        # the demonstration kernels carry no wrapper signature (0 of 184), so on the dev
+        # split nothing can ever be executed (E001: 24 of 24 "not_run").
         from cairn.tasks.kernel_exec import code_quality
 
         quality = code_quality(predictions)
@@ -233,7 +236,7 @@ def _run_one(
             f"consistency score {quality['consistency']:.3f} (n={quality['n']})"
         )
         print(f"    execution outcomes: {quality['statuses']}")
-    else:
+    elif args.split != "test":
         report = evaluate(predictions, queries)
         summary["eval"] = report.to_json()
         print(f"task {task_id} [{args.split}] {report.line()}")
@@ -267,6 +270,23 @@ def _print_preparation_notes(notes: dict[str, object]) -> None:
                 )
     elif isinstance(program, str):
         print(f"    program: {program}")
+    policy = notes.get("policy")
+    if isinstance(policy, dict):
+        print(
+            f"    policy: {policy['chosen'].upper()} from a probe on {policy['probe_examples']} "
+            f"held-out inputs: cheap {policy['cheap_accuracy']:.0%}, thinking "
+            f"{policy['costly_accuracy']:.0%}"
+        )
+        for name in ("sure", "unsure"):
+            row = policy[name]
+            if row["n"]:
+                print(
+                    f"        {name:6s} n={row['n']:3d} cheap {row['cheap_accuracy']:.0%} vs thinking "
+                    f"{row['costly_accuracy']:.0%} (only-cheap {row['only_cheap_right']}, "
+                    f"only-thinking {row['only_costly_right']}, p={row['p_value']:.3f})"
+                )
+    elif isinstance(policy, str):
+        print(f"    policy: {policy}")
     calibration = notes.get("calibration")
     if isinstance(calibration, dict):
         line = (

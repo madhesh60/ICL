@@ -410,5 +410,137 @@ def test_program_induction_sees_a_short_example_block(counter):
     runner.prepare(runner.splits.as_queries("dev")[:5])
     assert runner.notes["program"]["accepted"] is True
     assert runner.notes["program"]["examples_shown"] == 10
-    assert prompts and prompts[0].count("Input: ") == 10
+    # Examples are executable asserts with repr(): the input's type is unambiguous.
+    assert prompts and prompts[0].count("assert solve('[") == 10
     assert runner.notes["program"]["attempt_log"][0]["verify_accuracy"] == 1.0
+
+
+# ------------------------------------------------- escalation probe (E001 follow-up)
+
+
+def _trivia_task(n: int = 1500) -> TaskData:
+    pool = [
+        Example(f"e{i}", f"Category: TOPIC{i % 7} \nClue: clue number {i}", f"answer{i}")
+        for i in range(n)
+    ]
+    return TaskData(7, "toy trivia", "answer the clue", tuple(pool), ())
+
+
+def _knower(thinking_knows: bool, direct_knows: bool):
+    """A fake model that reads the clue number from the prompt and may or may not know it."""
+    import re
+
+    def reply(request):
+        last = request.messages[-1][1]
+        number = re.findall(r"clue number (\d+)", last)[-1]
+        knows = thinking_knows if request.thinking else direct_knows
+        answer = f"answer{number}" if knows else "no idea"
+        return [f"<think>...</think>{answer}" if request.thinking else answer] * request.n
+
+    return FunctionBackend(reply)
+
+
+def test_probe_picks_reason_first_when_the_cheap_rung_is_confidently_wrong(counter):
+    """E001 task 2 in miniature: the cheap samples agree, and they are wrong.
+
+    Agreement is a measure of confidence, not of correctness.  Only a paired comparison on
+    held-out examples shows that thinking is needed even where the cheap rung is sure."""
+    config = RunConfig(
+        context=CTX, calib_limit=80, workers=2, strategy=StrategyConfig(escalation_probe=30)
+    )
+    runner = TaskRunner(_trivia_task(), _knower(True, False), counter, config)
+    dev = runner.splits.as_queries("dev")[:6]
+    predictions = runner.run(dev)
+    policy = runner.notes["policy"]
+    assert policy["chosen"] == "reason_first"
+    assert policy["sure"]["n"] == 30 and policy["sure"]["cheap_accuracy"] == 0.0
+    assert policy["sure"]["costly_accuracy"] == 1.0 and policy["sure"]["p_value"] < 0.001
+    assert {p.source for p in predictions} == {"think_vote"}
+    assert all(p.answer == q.gold for p, q in zip(predictions, dev, strict=True))
+
+
+def test_probe_picks_cheap_only_when_thinking_does_not_help(counter):
+    """E001 task 7 in miniature: both rungs equally (un)informed, so do not pay for thinking."""
+    config = RunConfig(
+        context=CTX, calib_limit=80, workers=2, strategy=StrategyConfig(escalation_probe=30)
+    )
+    runner = TaskRunner(_trivia_task(), _knower(True, True), counter, config)
+    runner.prepare(runner.splits.as_queries("dev")[:4])
+    assert runner.notes["policy"]["chosen"] == "cheap_only"
+    assert runner.config.strategy.escalate is False
+    calls_before = runner.meter.summary().get("think_vote", {}).get("calls", 0)
+    runner.run(runner.splits.as_queries("dev")[:4])
+    assert runner.meter.summary()["think_vote"]["calls"] == calls_before  # no new thinking
+
+
+def test_reason_first_routes_a_classification_task_straight_to_thinking(counter):
+    """The test that would have caught the E001 task-2 miss: `use_scoring: false` alone does
+    NOT reach the thinking rung (the cheap constrained samples answer first)."""
+    spec, builder = _spec_builder(counter)
+
+    def reply(request):
+        return [
+            f"<think>listing words</think>{'Sad' if request.thinking else 'Not sad'}"
+        ] * request.n
+
+    plain = Annotator(spec, builder, FunctionBackend(reply), StrategyConfig(use_scoring=False))
+    assert plain.annotate(Query("q", "x")).source == "generate"  # the E001 behaviour
+    first = Annotator(
+        spec, builder, FunctionBackend(reply), StrategyConfig(use_scoring=False, reason_first=True)
+    )
+    prediction = first.annotate(Query("q", "x"))
+    assert (prediction.source, prediction.answer) == ("think_vote", "Sad")
+
+
+def test_a_kernel_proven_wrong_is_replaced_by_a_loud_stub(counter, monkeypatch):
+    """S_exec^2 / S_call: handing in a kernel known to be wrong can only lower the score."""
+    from cairn.pipeline import annotator as annotator_module
+    from cairn.tasks.kernel_exec import ExecReport, consistency_score
+
+    monkeypatch.setattr(
+        annotator_module,
+        "execute_kernel",
+        lambda code, signature: ExecReport("wrong_result", "differs from torch.relu"),
+    )
+    pool = [Example(f"k{i}", f"spec {i}", "import triton\n" + "y = 2\n" * 40) for i in range(60)]
+    spec = get_task(8)
+    builder = ContextBuilder(spec, pool, counter, replace(CTX, tail_k=1))
+    query = Query("q", "Wrapper Entry Information: relu(input, inplace=False) -> Tensor")
+    backend = FunctionBackend(lambda r: [GOOD_KERNEL] * r.n)
+    strategy = StrategyConfig(codegen_candidates=1, codegen_rounds=2)
+    prediction = Annotator(spec, builder, backend, strategy).annotate(query)
+    assert prediction.source == "abstain" and "NotImplementedError" in prediction.answer
+    assert prediction.meta["exec_status"] == "abstained"
+    assert "def relu" in prediction.meta["abstained_code"]  # kept for analysis
+    kept = Annotator(
+        spec, builder, backend, replace(strategy, abstain_on_proven_wrong=False)
+    ).annotate(query)
+    assert kept.source == "codegen" and kept.meta["exec_status"] == "wrong_result"
+    # 10 right, 30 callable, out of 166 -> abstaining on the 20 proven wrong triples the score.
+    assert consistency_score(10, 10, 166) > 2.9 * consistency_score(30, 10, 166)
+
+
+def test_probe_picks_the_ladder_when_thinking_helps_only_where_the_cheap_rung_is_unsure(counter):
+    """Even clue numbers: the quick answers agree and are right.  Odd ones: the quick
+    samples scatter (the cheap rung is unsure) and only thinking knows the answer."""
+    import re
+
+    def reply(request):
+        number = int(re.findall(r"clue number (\d+)", request.messages[-1][1])[-1])
+        if request.thinking:
+            return [f"<think>...</think>answer{number}"] * request.n
+        if number % 2 == 0:
+            return [f"answer{number}"] * request.n
+        if request.temperature > 0:
+            return [f"guess {i}" for i in range(request.n)]
+        return ["guess x"] * request.n
+
+    config = RunConfig(
+        context=CTX, calib_limit=80, workers=2, strategy=StrategyConfig(escalation_probe=30)
+    )
+    runner = TaskRunner(_trivia_task(), FunctionBackend(reply), counter, config)
+    runner.prepare(runner.splits.as_queries("dev")[:4])
+    policy = runner.notes["policy"]
+    assert policy["chosen"] == "ladder", policy
+    assert policy["sure"]["only_costly_right"] == 0 and policy["unsure"]["only_costly_right"] > 5
+    assert runner.config.strategy.escalate is True and runner.config.strategy.reason_first is False

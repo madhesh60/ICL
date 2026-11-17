@@ -1,0 +1,98 @@
+{
+  "task": 8,
+  "split": "dev",
+  "n": 24,
+  "seconds": 1315.0,
+  "sources": {
+    "codegen": 24
+  },
+  "notes": {
+    "pool": 120,
+    "clusters": 4
+  },
+  "usage": {
+    "codegen": {
+      "calls": 24,
+      "cache_file_hits": 0,
+      "prompt_tokens": 547827,
+      "cached_tokens": 446832,
+      "kv_cache_share": 0.8156,
+      "completion_tokens": 61736,
+      "seconds": 2689.92
+    },
+    "codegen_repair": {
+      "calls": 3,
+      "cache_file_hits": 0,
+      "prompt_tokens": 68563,
+      "cached_tokens": 67520,
+      "kv_cache_share": 0.9848,
+      "completion_tokens": 6965,
+      "seconds": 215.12
+    }
+  },
+  "config": {
+    "context": {
+      "min_demo_tokens": null,
+      "selection": "coverage",
+      "coverage_target": "queries",
+      "label_balance": 0.5,
+      "bulk_order": "interleave",
+      "n_clusters": 4,
+      "global_frac": 0.5,
+      "tail_k": 3,
+      "tail_per_label": 2,
+      "tail_mmr": 1.0,
+      "tail_as_turns": true,
+      "restate_rule": true,
+      "seed": 0
+    },
+    "strategy": {
+      "use_program": true,
+      "use_scoring": true,
+      "calibration": "stack",
+      "conformal_alpha": 0.1,
+      "accept_confidence": 0.75,
+      "min_singleton_accuracy": 0.85,
+      "min_singleton_count": 10,
+      "escalate": true,
+      "vote_n": 5,
+      "think_max_tokens": 1024,
+      "think_temperature": 0.6,
+      "cheap_samples": 3,
+      "agree_share": 0.67,
+      "induce_guidelines": false,
+      "induction_examples": 48,
+      "induction_max_tokens": 4096,
+      "induction_rounds": 4,
+      "codegen_rounds": 3,
+      "codegen_candidates": 2,
+      "codegen_execute": true,
+      "seed": 0
+    },
+    "splits": {
+      "calib": 300,
+      "dev": 300,
+      "holdout": 200,
+      "max_reserved_frac": 0.35
+    },
+    "split_seed": 42,
+    "workers": 4,
+    "calib_limit": 300,
+    "memory": false,
+    "memory_wave": 64,
+    "memory_max_items": 48,
+    "memory_min_confidence": 0.95
+  },
+  "commit": "e34413c",
+  "model": "Qwen3-4B",
+  "code_quality": {
+    "n": 24,
+    "static_ok": 0.9583333333333334,
+    "callable": 0.0,
+    "matches_torch": 0.0,
+    "consistency": 0.0,
+    "statuses": {
+      "not_run": 24
+    }
+  }
+}

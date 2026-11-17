@@ -81,7 +81,11 @@ else:
             signal.setitimer(signal.ITIMER_REAL, job["per_call_s"])
         try:
             value = func(item)
-            results.append({"ok": True, "value": value if isinstance(value, str) else repr(value)})
+            results.append({
+                "ok": True,
+                "value": value if isinstance(value, str) else repr(value),
+                "type": type(value).__name__,
+            })
         except BaseException as err:
             results.append({"ok": False, "error": f"{type(err).__name__}: {err}"[:300]})
         finally:
@@ -104,6 +108,9 @@ class CallResult:
     ok: bool
     value: str = ""
     error: str = ""
+    # Python type name of what the function returned ("str", "list", ...).  A program that
+    # returns a list where a string is expected is a different mistake from a wrong string.
+    kind: str = "str"
 
 
 def _child_env() -> dict[str, str]:
@@ -194,7 +201,12 @@ def run_function(
         rows = json.loads(done.stdout)
         if len(rows) == len(inputs):
             return [
-                CallResult(ok=bool(r["ok"]), value=r.get("value", ""), error=r.get("error", ""))
+                CallResult(
+                    ok=bool(r["ok"]),
+                    value=r.get("value", ""),
+                    error=r.get("error", ""),
+                    kind=r.get("type", "str"),
+                )
                 for r in rows
             ]
     if done.returncode < 0:

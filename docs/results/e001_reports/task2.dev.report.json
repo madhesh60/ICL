@@ -1,0 +1,120 @@
+{
+  "task": 2,
+  "split": "dev",
+  "n": 60,
+  "seconds": 143.4,
+  "sources": {
+    "generate": 58,
+    "think_vote": 2
+  },
+  "notes": {
+    "pool": 4640,
+    "clusters": 1
+  },
+  "usage": {
+    "generate": {
+      "calls": 60,
+      "cache_file_hits": 0,
+      "prompt_tokens": 1873481,
+      "cached_tokens": 1795024,
+      "kv_cache_share": 0.9581,
+      "completion_tokens": 120,
+      "seconds": 203.03
+    },
+    "generate_sample": {
+      "calls": 60,
+      "cache_file_hits": 0,
+      "prompt_tokens": 1873481,
+      "cached_tokens": 1872960,
+      "kv_cache_share": 0.9997,
+      "completion_tokens": 360,
+      "seconds": 128.18
+    },
+    "think_vote": {
+      "calls": 2,
+      "cache_file_hits": 0,
+      "prompt_tokens": 62464,
+      "cached_tokens": 62448,
+      "kv_cache_share": 0.9997,
+      "completion_tokens": 6855,
+      "seconds": 203.61
+    }
+  },
+  "config": {
+    "context": {
+      "min_demo_tokens": null,
+      "selection": "coverage",
+      "coverage_target": "queries",
+      "label_balance": 0.5,
+      "bulk_order": "interleave",
+      "n_clusters": 1,
+      "global_frac": 0.5,
+      "tail_k": 12,
+      "tail_per_label": 2,
+      "tail_mmr": 1.0,
+      "tail_as_turns": true,
+      "restate_rule": true,
+      "seed": 0
+    },
+    "strategy": {
+      "use_program": true,
+      "use_scoring": false,
+      "calibration": "stack",
+      "conformal_alpha": 0.1,
+      "accept_confidence": 0.75,
+      "min_singleton_accuracy": 0.85,
+      "min_singleton_count": 10,
+      "escalate": true,
+      "vote_n": 5,
+      "think_max_tokens": 768,
+      "think_temperature": 0.6,
+      "cheap_samples": 3,
+      "agree_share": 0.67,
+      "induce_guidelines": false,
+      "induction_examples": 48,
+      "induction_max_tokens": 4096,
+      "induction_rounds": 4,
+      "codegen_rounds": 3,
+      "codegen_candidates": 2,
+      "codegen_execute": true,
+      "seed": 0
+    },
+    "splits": {
+      "calib": 300,
+      "dev": 300,
+      "holdout": 200,
+      "max_reserved_frac": 0.35
+    },
+    "split_seed": 42,
+    "workers": 8,
+    "calib_limit": 300,
+    "memory": false,
+    "memory_wave": 64,
+    "memory_max_items": 48,
+    "memory_min_confidence": 0.95
+  },
+  "commit": "e34413c",
+  "model": "Qwen3-4B",
+  "eval": {
+    "n": 60,
+    "correct": 27,
+    "accuracy": 0.45,
+    "ci95": [
+      0.3309,
+      0.5751
+    ],
+    "ece": 0.5497,
+    "by_source": {
+      "generate": {
+        "n": 58,
+        "share": 0.9667,
+        "accuracy": 0.431
+      },
+      "think_vote": {
+        "n": 2,
+        "share": 0.0333,
+        "accuracy": 1.0
+      }
+    }
+  }
+}

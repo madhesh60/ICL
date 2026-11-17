@@ -1,0 +1,128 @@
+{
+  "task": 3,
+  "split": "dev",
+  "n": 60,
+  "seconds": 397.8,
+  "sources": {
+    "program": 60
+  },
+  "notes": {
+    "pool": 3197,
+    "clusters": 1,
+    "program": {
+      "accepted": true,
+      "attempts": 3,
+      "examples_shown": 48,
+      "verified_on": 150,
+      "confirmed_on": 150,
+      "best_verify_accuracy": 1.0,
+      "attempt_log": [
+        {
+          "round": 0,
+          "thinking": true,
+          "finish": "length",
+          "verify_accuracy": 0.0,
+          "problem": "token budget ran out before any code"
+        },
+        {
+          "round": 0,
+          "thinking": true,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: [183, 82, 79, 4, 13, 62]\nExpected: [550, 41, 238, 2, 40, 31]\nGot: ERROR rejected: use of 'eval' is not allowed"
+        },
+        {
+          "round": 1,
+          "thinking": true,
+          "finish": "stop",
+          "verify_accuracy": 1.0,
+          "problem": ""
+        }
+      ],
+      "code": "import ast\n\ndef solve(text: str) -> str:\n    numbers = ast.literal_eval(text)\n    result = []\n    for num in numbers:\n        if num % 2 == 0:\n            result.append(num // 2)\n        else:\n            result.append(num * 3 + 1)\n    return str(result)"
+    }
+  },
+  "usage": {
+    "induce_program": {
+      "calls": 2,
+      "cache_file_hits": 0,
+      "prompt_tokens": 4814,
+      "cached_tokens": 2208,
+      "kv_cache_share": 0.4587,
+      "completion_tokens": 11303,
+      "seconds": 397.07
+    }
+  },
+  "config": {
+    "context": {
+      "min_demo_tokens": null,
+      "selection": "coverage",
+      "coverage_target": "queries",
+      "label_balance": 0.5,
+      "bulk_order": "interleave",
+      "n_clusters": 1,
+      "global_frac": 0.5,
+      "tail_k": 8,
+      "tail_per_label": 2,
+      "tail_mmr": 1.0,
+      "tail_as_turns": true,
+      "restate_rule": true,
+      "seed": 0
+    },
+    "strategy": {
+      "use_program": true,
+      "use_scoring": true,
+      "calibration": "stack",
+      "conformal_alpha": 0.1,
+      "accept_confidence": 0.75,
+      "min_singleton_accuracy": 0.85,
+      "min_singleton_count": 10,
+      "escalate": true,
+      "vote_n": 5,
+      "think_max_tokens": 2048,
+      "think_temperature": 0.6,
+      "cheap_samples": 3,
+      "agree_share": 0.67,
+      "induce_guidelines": false,
+      "induction_examples": 48,
+      "induction_max_tokens": 4096,
+      "induction_rounds": 4,
+      "codegen_rounds": 3,
+      "codegen_candidates": 2,
+      "codegen_execute": true,
+      "seed": 0
+    },
+    "splits": {
+      "calib": 300,
+      "dev": 300,
+      "holdout": 200,
+      "max_reserved_frac": 0.35
+    },
+    "split_seed": 42,
+    "workers": 8,
+    "calib_limit": 300,
+    "memory": false,
+    "memory_wave": 64,
+    "memory_max_items": 48,
+    "memory_min_confidence": 0.95
+  },
+  "commit": "e34413c",
+  "model": "Qwen3-4B",
+  "eval": {
+    "n": 60,
+    "correct": 60,
+    "accuracy": 1.0,
+    "ci95": [
+      0.9398,
+      1.0
+    ],
+    "ece": 0.0,
+    "by_source": {
+      "program": {
+        "n": 60,
+        "share": 1.0,
+        "accuracy": 1.0
+      }
+    }
+  }
+}

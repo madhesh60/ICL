@@ -22,6 +22,7 @@ Apache-2.0
 |---|---|
 | **Learn the ideas** | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md): every technique explained with a picture, a real example and the reasoning behind it |
 | **First real run, diagnosed** | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md): how the result was validated, what was broken, what changed, and predictions for the next run |
+| **Second run: predictions scored** | [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md): five of eight predictions landed; why three missed; the decision to fix three things and add one algorithm |
 | **Every number with its source** | [`docs/04_EXPERIMENT_LOG.md`](docs/04_EXPERIMENT_LOG.md) (model runs) · [`docs/results/offline_benchmarks.md`](docs/results/offline_benchmarks.md) (no model needed) |
 | **Run it on a free GPU** | [`scripts/kaggle_run.sh`](scripts/kaggle_run.sh): one Kaggle cell, 2 × T4, from clone to scored report: [Installation](#installation-and-reproduction) |
 | **Run it on a laptop** | tests, measurements and the full pipeline with a stand-in model, CPU only: [Option C](#option-c-a-laptop-without-a-gpu) |
@@ -99,7 +100,11 @@ is measured on held-out labelled examples that never appear in a prompt.
    ill-formed.**
 6. **Programs proven before they are trusted.** For the three exact-rule tasks, Qwen3-4B reads the examples and
    writes the rule as a Python function, which is accepted only if it reproduces every answer on two separate
-   held-out sets.
+   held-out sets. In the second run, accepted programs answered **60 of 60** inputs on tasks 1 and 3 with no model
+   call per input.
+7. **Compute spent where it is measured to pay.** An escalation probe answers 40 held-out examples both cheaply
+   and with thinking, and a paired test decides per task whether to think always, only when unsure, or never.
+   Hand-set choices from 20 inputs were wrong in both directions; the probe replaces them with a measurement.
 
 ---
 
@@ -163,6 +168,8 @@ and "sure enough" is decided by held-out labelled examples, not by a hand-set th
 Per task, before any test input   (preparation on the calib split)
   calibrate   fit the calibrator on half A; fit the conformal threshold on half B
   gate        were the cheap rung's one-label answers accurate on half B?  └ no → never stop at the cheap rung
+  probe       40 held-out inputs answered cheaply AND with thinking; paired test picks the policy:
+                thinking wins where cheap was sure → reason_first · only where unsure → ladder · else cheap_only
   induce      exact tasks: the model writes solve(); accept only if it reproduces verify AND confirm exactly
 
 Per input
@@ -239,14 +246,16 @@ The technical score weighs three questions. This is where Cairn answers each.
 
 - **A shared prefix for every input of a task.** The 30K block is read once and served from the KV cache;
   requests with the same beginning are sent together, and one primer request goes first so the others find its
-  cache entry.
+  cache entry. Measured in the second run: **96–100%** of prompt tokens came from the server's cache on every
+  text task (7.7M prompt tokens for task 5's calibration, 98% cached).
 - **Append-only session memory** (built and tested; off by default until measured with the real model). Sure
   answers join a block that only grows at its end and changes only between waves, so the cached prefix stays
   valid; identical inputs are answered from memory and always receive identical answers.
 - **Crash-safe continuity.** An append-only, fsync'd journal, a disk cache of every deterministic model reply,
   and a settings fingerprint make a multi-hour annotation run resumable and reproducible to the byte.
-- **Cost-aware routing.** Expensive reasoning is spent only where held-out evidence says the cheap answer is
-  unreliable, which is what makes 3,666 test inputs affordable on two free GPUs.
+- **Cost-aware routing.** Expensive reasoning is spent only where held-out evidence says it pays: the conformal
+  gate per input, and the escalation probe per task. That is what makes 3,666 test inputs affordable on two free
+  GPUs.
 
 ---
 
@@ -303,37 +312,51 @@ Cairn therefore prefers a kernel that fails loudly over one that returns wrong n
 
 ## Results
 
-### First Real Run With Qwen3-4B (E000)
+### Second Real Run (E001): Predictions Scored
 
-Kaggle notebook, 2 × Tesla T4 16 GB, vLLM 0.12.0, tensor parallel 2, fp16, YaRN × 4, prefix caching on;
-20 development inputs per task; 2026-11-16. Raw log:
-[`docs/results/kaggle_run_2026-11-16_raw.md`](docs/results/kaggle_run_2026-11-16_raw.md).
+Kaggle, 2 × Tesla T4, vLLM 0.12.0, commit `e34413c`, 60 development inputs per task (24 for task 8), 2026-11-17.
+Raw log: [`docs/results/kaggle_run_2026-11-17_raw.md`](docs/results/kaggle_run_2026-11-17_raw.md) · per-task
+reports: [`docs/results/e001_reports/`](docs/results/e001_reports/) · analysis:
+[`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md).
 
-| Task | Accuracy (95% interval) | Which rung answered @ its accuracy | Diagnosis |
-|---|---|---|---|
-| 1 closest integers | 70% (48–85) | think + vote 85% @ 82% · plain guess 15% @ 0% | program path never fired → **fixed** |
-| 2 count nouns / verbs | 70% (48–85) | one-token score 35% @ 29% · think + vote 65% @ 92% | the cheap rung was trusted when it should not have been → **fixed** |
-| 3 Collatz step | **100%** (84–100) | think + vote 100% @ 100% | program path never fired; thinking carried it |
-| 4 concatenate strings | 70% (48–85) | think + vote 100% @ 70% | program path never fired → **fixed** |
-| 5 tweet sadness | 70% (48–85) | one-token score 75% @ 87% · think + vote 25% @ 20% | escalation hurt on five inputs → provisionally off |
-| 6 same genre | **95%** (76–99) | one-token score 90% @ 100% | the overlap signal carries the task |
-| 7 Jeopardy answer | 20% (8–42) | both rungs ≈ 20% | limited by what a 4B model knows |
-| 8 Triton kernel | consistency 0.000 | 95% pass the static check · 0% ran | the executor ran nothing and did not say why → **fixed** |
+| Task | Predicted | Measured (95% interval) | Which rung answered @ its accuracy | Verdict |
+|---|---|---|---|---|
+| 1 closest integers | 97–100% | **100%** (94–100) | verified program 100% @ 100% | ✅ landed |
+| 2 count nouns / verbs | 82–95% | 45% (33–58) | cheap samples 97% @ 43% · thinking 3% @ 100% | ❌ the setting never reached thinking → **fixed** |
+| 3 Collatz step | 97–100% | **100%** (94–100) | verified program 100% @ 100% | ✅ landed |
+| 4 concatenate strings | 97–100% | 80% (68–88) | thinking 100% @ 80% | ❌ the model misread the input type → **fixed** |
+| 5 tweet sadness | 72–82% | **85%** (74–92) | one-token score 100% @ 85% | ✅ landed |
+| 6 same genre | 88–97% | **93.3%** (84–97) | one-token score 93% @ 96% · thinking 7% @ 50% | ✅ landed |
+| 7 Jeopardy answer | 18–32% | 20% (12–32) | cheap 68% @ 20% · thinking 32% @ 21% | ✅ landed (knowledge-bound) |
+| 8 Triton kernel | 0.05–0.25 | 0.000 | 24 of 24 `not_run` | ❌ dev inputs carry no signature → measured on test inputs now |
 
-**Is it real?** Yes. The configuration points at the live server, the server's self-check returned real
-reasoning, real token probabilities and real cache hits, and the development split cannot leak into a prompt. **Is
-it precise?** No: twenty inputs give an interval of about ±20 points. The run's value is that it showed which rung
-works and exposed three defects in Cairn's own machinery, none of them in the model. The full validation and
-diagnosis are in [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md).
+Mean over tasks 1–7: **74.8%** (E000: 67.9%). Each miss traced to Cairn, not to the model:
 
-### Predictions for the Next Run (E001, 60 inputs per task)
+- **Task 2.** Without scoring, the task fell through to four constrained samples, which agreed unanimously and were
+  right 43% of the time. Agreement measures confidence, not correctness. The escalation probe now measures it.
+- **Task 4.** The model wrote `''.join(text)` eight times: it read the string `"['p', 'o']"` as a list. Examples
+  are now shown as `repr()` asserts, feedback names the mistake ("returned its input unchanged"), and repeated
+  code is detected.
+- **Task 8.** All 184 demonstration kernels lack a wrapper signature, while all 166 test inputs have one, so the
+  dev split cannot execute anything. The metric needs no gold answer, so task 8 is now measured on test inputs.
 
-Written before the run, so that judgement can be scored as well as the system. A prediction holds if the measured
-interval overlaps it.
+### First Real Run (E000)
 
-| Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 (consistency) |
+20 development inputs per task, 2026-11-16 ([raw log](docs/results/kaggle_run_2026-11-16_raw.md),
+[analysis](docs/06_FIRST_REAL_RUN.md)). Accuracy 70 · 70 · 100 · 70 · 70 · 95 · 20% on tasks 1–7; consistency 0.000
+on task 8. It showed which rungs work and exposed three defects: program induction never fired, a confidently
+wrong cheap rung was trusted, and kernel execution was silent. All three were fixed before E001, and E001 confirms
+the first fix (tasks 1 and 3 at 100%).
+
+### Predictions for the Next Run (E002)
+
+Written before the run, as in [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md) §8.
+
+| Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
-| **Predicted** | 97–100% | 82–95% | 97–100% | 97–100% | 72–82% | 88–97% | 18–32% | 0.05–0.25 |
+| **Predicted** | 100% | 82–95% | 100% | 97–100% | 80–90% | 90–97% | 17–30% | callable 10–50%, consistency 0.00–0.20 |
+
+Predicted mean over tasks 1–7: about **85–89%**.
 
 ### Measured Without a Model
 
@@ -347,7 +370,7 @@ interval overlaps it.
 | Kernel static checker on the dataset's own reference kernels | **183 of 184** pass; the one flagged really calls `tl.cidv` | examples (O007) |
 | Wrapper signatures parsed from the code task's test inputs | **166 of 166** | test inputs (O008) |
 | Labels of tasks 1, 3, 4 consistent with their stated rules | **13,490 of 13,490** | all examples (O009) |
-| Test suite | **149** tests, including real Triton kernels executed on CPU | CI: Ubuntu, Python 3.10 and 3.12 |
+| Test suite | **157** tests, including real Triton kernels executed on CPU | CI: Ubuntu, Python 3.10 and 3.12 |
 
 Every row is regenerated by `cairn bench` or listed with its command in the experiment log.
 
@@ -370,9 +393,16 @@ decision it led to. Negative and provisional results are kept. *Shipped* means o
 | O009 | Is label noise why no program was accepted? | 0 mismatches in 13,490 labels | ❌ hypothesis rejected; the cause was the token budget |
 | E000 · 1, 3, 4 | Does program induction fire with the real model? | no program in any of the three tasks | ✅ fixed: 48-example prompt, 4K budget, retry without thinking |
 | E000 · 2 | Can one-token scoring count nouns and verbs? | sure on 35% of inputs, right on 29% of those | ❌ scoring off for task 2; held-out gate shipped for all tasks |
-| E000 · 5 | Does thinking help on tweet sadness? | the escalated inputs: 1 of 5 right | ➖ provisionally off; re-test with 100 inputs (E002) |
+| E000 · 5 | Does thinking help on tweet sadness? | the escalated inputs: 1 of 5 right | ➖ superseded by the escalation probe |
 | E000 · 7 | Does more reasoning help trivia? | both rungs ≈ 20% | ➖ knowledge-bound; votes pooled by meaning |
 | E000 · 8 | Do generated kernels run? | none ran; no reason reported | ✅ fixed: outcome histogram, Triton-friendly test shapes |
+| E001 · 1, 3 | Does the repaired induction work? | programs accepted; 60/60 on both tasks, no model call per input | ✅ confirmed |
+| E001 · 2 | Does `use_scoring: false` reach thinking? | no: unanimous cheap samples, 43% right | ❌ a setting is not a behaviour; probe shipped |
+| E001 · 4 | Why was no program accepted? | `''.join(text)` eight times: the input string read as a list | ✅ fixed: `repr()` asserts, named mistakes, repeat detection |
+| E001 · 6 | Did escalation help? (counterfactual from the journal) | 3 of 4 right before thinking, 2 of 4 after | ❌ thinking hurt; the probe decides per task |
+| E001 · 7 | What are the errors? | 40 of 48 wrong knowledge, 6 near misses, 2 the model talking | ➖ no new algorithm; talking replies rejected |
+| E001 · 8 | Why did nothing run? | 0 of 184 demonstrations have a signature; 166 of 166 test inputs do | ✅ measured on test inputs; abstain on proven-wrong kernels |
+| E001 · all | Does the tree prompt reuse the cache? | 96–100% of prompt tokens served from cache | ✅ confirmed with the real server |
 | — | Induced annotation rulebooks | built and tested offline; kept only if a paired test says they do not hurt | ⏳ off until measured |
 | — | Append-only session memory | built and tested offline | ⏳ off until measured |
 
@@ -386,20 +416,24 @@ decision it led to. Negative and provisional results are kept. *Shipped* means o
 context window, with Qwen3-4B's YaRN position scaling enabled for prompts beyond its native 32K. A FlagScale serve
 configuration with the same settings is provided in `configs/serve/flagscale_qwen3_4b.yaml`.
 
-**Wall time of the first run**, 20 inputs plus preparation, 2 × T4 (E000):
+**Measured in the second run (E001)**, 60 inputs per task plus preparation, 2 × T4:
 
-| Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 (24) |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
-| Seconds | 1,609 | 719 | 1,422 | 1,302 | 322 | 302 | 599 | 1,006 |
+| Wall time (s) | 282 | 143 | 398 | 3,831 | 128 | 408 | 941 | 1,315 |
+| Answered by | program | cheap | program | thinking | score | score | mixed | codegen |
+| Prompt tokens from cache | — | 96–100% | — | 100% | 98% | 97% | 93–100% | 82–98% |
 
-**Cost per input on this hardware** (estimated from the wall times above, not yet metered per stage):
-
-| Rung | Approximate cost | Consequence for 500 test inputs |
+| Rung | Measured cost | Consequence for 500 test inputs |
 |---|---|---|
-| Accepted program | 0 model calls | minutes, dominated by one-time preparation |
-| One-token scoring | 1–2 s | about 15 minutes |
-| Think + 5 votes | 30–40 s | 4–6 hours, most of one Kaggle session |
-| Kernel generation and repair | up to 6 generations of 3K tokens | task 8 needs a session of its own |
+| Accepted program | one induction call (about 8,000 tokens), then nothing | minutes |
+| One-token scoring | one token per input from a cached 30K prefix | about 15–30 minutes with calibration |
+| Think + 5 votes | about 3,400 completion tokens per input; about 70 tokens/s for the whole server under load | **3–7 hours** for task 2 |
+| Kernel generation and repair | about 1,300 tokens per candidate kernel, 2 candidates per round, up to 3 rounds | 2–3 hours for 166 inputs |
+
+**Concurrency rule.** Workers × parallel samples must fit the server's sequence limit (16 here). Eight workers
+asking for five thinking samples each queued 40 sequences, and seven requests timed out after 600 s. Tasks where
+every input may think now use three workers.
 
 This is why the ladder exists: on Kaggle's 12-hour sessions and 30 GPU hours a week, spending reasoning only where
 held-out evidence asks for it is the difference between finishing and not finishing.
@@ -465,7 +499,7 @@ cairn submit --run-dir runs/r1 --out submission.zip               # every id onc
 
 ```bash
 pip install -e ".[dev]"
-pytest                                   # 149 tests
+pytest                                   # 157 tests
 cairn inspect                            # tasks, splits, token sizes
 cairn baseline                           # model-free reference scores
 cairn bench                              # every offline number → docs/results/offline_benchmarks.md
@@ -503,8 +537,14 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 
 ## Limitations
 
-- **One real run, twenty inputs per task.** It identified which rungs work and exposed three defects, now fixed,
-  but it cannot rank settings. The predictions above are untested until E001 runs.
+- **Two real runs, at most 60 inputs per task.** Intervals are about ±12 points. The fixes made after E001
+  (escalation probe, induction contract, task-8 measurement) are tested with stand-in models, not yet with
+  Qwen3-4B; the predictions above are untested until E002 runs.
+- **The probe is small.** Forty held-out inputs detect large gains (task 2) but can miss small ones; by design it
+  then keeps the cheaper policy.
+- **Task 8 has no development split.** Its demonstrations differ in format from its test inputs, so it is measured
+  on test inputs without gold answers: executability, and correctness only for the 62 of 166 functions with a
+  PyTorch twin.
 - **FlagScale.** The rules require FlagScale as the development framework. Every real run so far served Qwen3-4B
   with vLLM directly; the FlagScale configuration is provided (it passes the same engine arguments to vLLM) but
   has not yet been run end to end.
@@ -531,6 +571,7 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 |---|---|
 | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) | every idea explained in five parts: one line, a picture, a real example, the steps, one line to remember |
 | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md) | validating a real result, diagnosing it, a twelve-step reasoning method, a time budget, predictions |
+| [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md) | scoring predictions, three misses and their lessons, free experiments from the journal, the fix-or-add decision, the escalation probe |
 | [`docs/04_EXPERIMENT_LOG.md`](docs/04_EXPERIMENT_LOG.md) | every measurement and run, one change per row, with the decision it led to |
 | [`docs/results/offline_benchmarks.md`](docs/results/offline_benchmarks.md) | every number that needs no model, regenerated by `cairn bench` |
 | [`docs/03_RESEARCH_NOTEBOOK.md`](docs/03_RESEARCH_NOTEBOOK.md) | hypotheses, the idea bank, per-task thinking, open questions |
@@ -552,7 +593,7 @@ cairn/
 └── config.py · doctor.py · submit.py · cli.py
 configs/    settings profiles and server launch files (vLLM, FlagScale)
 scripts/    kaggle_run.sh (2 × T4) · gpu_run.sh (one GPU)
-tests/      149 tests, including a fake HTTP model server and Triton kernels on CPU
+tests/      157 tests, including a fake HTTP model server and Triton kernels on CPU
 docs/       learning guide, run analysis, experiment log, results, plan, notebook
 OpenSeek/   the official competition repository: data and baseline, unchanged
 ```

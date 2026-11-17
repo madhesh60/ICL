@@ -18,6 +18,9 @@ untouched second set; `test` = hidden-label submission set.
 | O007 | 2026-11-16 | 8 | examples | static checker on the 184 reference kernels | 183 pass; 1 real typo (`tl.cidv`) | checker trusted |
 | O008 | 2026-11-16 | 8 | test | signatures parsed | 166/166 | pin the signature in every prompt |
 | O009 | 2026-11-17 | 1,3,4 | all examples | do the labels follow the exact rule? (true rule run over every example) | 5500/5500, 3997/3997, 3993/3993 match | label noise is NOT why program induction failed in E000 |
+| O010 | 2026-11-17 | 8 | examples vs test | inputs with a parseable wrapper signature | demonstrations 0/184; test 166/166 | the dev split cannot measure execution; measure task 8 on test inputs (metric needs no gold) |
+| O011 | 2026-11-17 | 8 | test | test functions with a PyTorch function of the same name | 62/166 (div, tanh, matmul, conv2d, ...) | correctness is checkable for ~37% of test kernels; the rest only for "runs and is finite" |
+| O012 | 2026-11-17 | 7 | trivia answers | longest gold answer; gold answers containing ':' or starting with "wait" | 11 words; 1 (`the 3:10 to yuma`); 0 | replies over 12 words or starting with "wait"/"clue:" are talk, not answers |
 
 ## Model runs (Qwen3-4B)
 
@@ -35,9 +38,17 @@ Analysis: `docs/06_FIRST_REAL_RUN.md`.
 | E000 | 2026-11-16 | 6 | dev (20) | same | ≥30K | 95% (76..99) | score 90% @ 100%, think_vote 10% @ 50% | 302 | overlap signal carries it |
 | E000 | 2026-11-16 | 7 | dev (20) | same | ≥30K | 20% (8..42) | generate 55% @ 18%, think_vote 45% @ 22% | 599 | knowledge-bound; ECE 0.54 (over-confident) |
 | E000 | 2026-11-16 | 8 | dev (20) | same, `CAIRN_TRITON_INTERPRET=0` | ≥16K | consistency 0.000 | static OK 95%, runs 0%, torch match 0% | 1006 | executor ran nothing; no reason printed (fixed: outcome histogram) |
-| E001 | planned | all | dev (60) | commit after E000 fixes: short induction block + 4096 tokens + no-think retry; singleton-accuracy gate; t2 `use_scoring: false`; t5 `escalate: false`; t1/3/4 backup `think_max_tokens: 2048`; Triton-friendly test shapes; trivia vote pooling | ≥30K | predictions in `06_FIRST_REAL_RUN.md` §6 | | | run with `scripts/kaggle_run.sh` (LIMIT=60) |
-| E002 | planned | 5 | dev (100) | `escalate: true` vs `false` via `cairn tune --task 5 --limit 100` | ≥30K | | | | decides E000's provisional task-5 choice properly |
-| E003 | planned | 2 | dev (100) | `vote_n` 3 vs 5; `think_max_tokens` 768 vs 1024 | ≥30K | | | | cost/accuracy trade for the most expensive task |
+| E001 | 2026-11-17 | 1 | dev (60) | @ e34413c: 48-example induction prompt, 4096 tokens, no-think retry | ≥30K | **100%** (94..100) | program 100% @ 100% | 282 | accepted in round 0 (one of two candidates ran out of budget) |
+| E001 | 2026-11-17 | 2 | dev (60) | `use_scoring: false` | ≥30K | 45% (33..58) | generate 97% @ 43%, think_vote 3% @ 100% | 143 | **prediction missed**: cheap constrained samples answered first, unanimous and wrong |
+| E001 | 2026-11-17 | 3 | dev (60) | as task 1 | ≥30K | **100%** (94..100) | program 100% @ 100% | 398 | first candidate used `eval` (rejected by the sandbox); round 1 accepted |
+| E001 | 2026-11-17 | 4 | dev (60) | as task 1 | ≥30K | 80% (68..88) | think_vote 100% @ 80% | 3831 | **prediction missed**: `''.join(text)` 8 times (string read as list); 7 read timeouts (40 sequences vs 16) |
+| E001 | 2026-11-17 | 5 | dev (60) | `escalate: false` | ≥30K | 85% (74..92) | score 100% @ 85% | 128 | stacked calibration 78.4 → 80.0% held-out; singletons 88% right on held-out |
+| E001 | 2026-11-17 | 6 | dev (60) | unchanged | ≥30K | 93.3% (84..97) | score 93% @ 96%, think_vote 7% @ 50% | 408 | journal counterfactual: the 4 escalated had 3 right before thinking, 2 after |
+| E001 | 2026-11-17 | 7 | dev (60) | vote pooling by meaning | ≥30K | 20% (12..32) | generate 68% @ 20%, think_vote 32% @ 21% | 941 | 40/48 errors wrong knowledge, 6 near misses, 2 the model talking |
+| E001 | 2026-11-17 | 8 | dev (24) | Triton-friendly shapes, outcome histogram | ≥16K | consistency 0.000 | static OK 96%, `not_run` 24/24 | 1315 | **prediction missed**: dev inputs have no signature (O010), execution never attempted |
+| E002 | planned | all | dev (60); task 8 test (24) | after E001: escalation probe (40 held-out, paired McNemar, p ≤ 0.10); `repr()` assert induction + named mistakes + repeat detection; task 8 on test inputs + abstain on proven wrong; trivia talk filter; workers 3 for tasks 1–4; timeout 900 s | ≥30K | predictions in `07_SECOND_RUN.md` §8 | | | `scripts/kaggle_run.sh` (LIMIT=60, LIMIT8=24) |
+| E003 | planned | 2 | dev (100) | `vote_n` 3 vs 5 (paired) | ≥30K | | | | the cost lever for the most expensive task |
+| E004 | planned | 8 | test (24) | differential testing: model-written PyTorch reference for functions without a twin | ≥16K | | | | only after E002 shows how many kernels run at all |
 
 ## Decisions made from this log
 - O001 → answers are read by one-token scoring or constrained generation; every ladder ends in a model-free answer.
@@ -49,3 +60,9 @@ Analysis: `docs/06_FIRST_REAL_RUN.md`.
 - E000 (task 5) → `escalate: false`, provisional until E002.
 - E000 (task 8) → execution outcomes are reported as a histogram; the driver guesses shapes that are multiples of 16 first.
 - E000 (all) → 20 inputs per task cannot separate 65% from 80%; the next dev pass uses 60, and `cairn tune` uses 100+ for any single decision.
+- E001 (tasks 1/3) → the repaired induction works: verified programs, 60/60, no model call per input.
+- E001 (task 2) → a setting is not a behaviour: per-task "should this task think?" is now measured by the escalation probe instead of set by hand; the hand-set task-5 `escalate: false` is removed for the same reason.
+- E001 (task 4) → induction examples are `repr()` asserts; feedback reports the return type and "returned its input unchanged"; repeated code is detected and called out.
+- E001 (task 8) + O010 → task 8 is measured on test inputs; kernels proven wrong are replaced by a loud stub (S_exec²/S_call algebra).
+- E001 (task 7) → no new algorithm (knowledge-bound); talking replies are rejected by the normaliser (O012).
+- E001 (systems) → workers × vote_n ≤ server `--max-num-seqs`; tasks 1–4 use 3 workers; timeout 900 s.

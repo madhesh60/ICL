@@ -51,8 +51,10 @@ commands. Do the exercises at the end. Then write your own notes in
 24. Interview questions with short answers
 25. Glossary
 
-**Part D — the first real run**
+**Part D — the real runs**
 26. Reading a real result (pointer to `06_FIRST_REAL_RUN.md`)
+27. Scoring your own predictions (pointer to `07_SECOND_RUN.md`)
+28. The escalation probe: measuring whether thinking pays
 
 ---
 
@@ -876,7 +878,7 @@ labelled and recoverable.
 
 ---
 
-# Part D — the first real run
+# Part D — the real runs
 
 ## 26. Reading a real result
 
@@ -900,3 +902,67 @@ sections 11, 13 and 19 of this guide. It covers:
 
 **Remember:** the first real run is not where the project is finished; it is where you find
 out which of your beliefs were about the model and which were about your own tooling.
+
+---
+
+## 27. Scoring your own predictions
+
+Before the second run, `06_FIRST_REAL_RUN.md` wrote down a predicted range for every task.
+After it, [`07_SECOND_RUN.md`](07_SECOND_RUN.md) scored them: **five of eight landed.** The
+three misses were the most useful part of the run, because each one exposed a belief about
+Cairn itself that was false:
+
+| miss | the false belief | the rule it left behind |
+|---|---|---|
+| task 2: 45%, predicted 82–95% | "switching scoring off sends every input to thinking" | a setting is not a behaviour: trace it to the code, test the behaviour |
+| task 4: 80%, predicted 97–100% | "a bigger budget is all induction needs" | when a capable model repeats a simple mistake, rewrite the question |
+| task 8: 0.000, predicted 0.05–0.25 | "the dev split measures executability" | check that the validation split looks like the test set, in the way the metric cares about |
+
+**Remember:** a prediction you never wrote down cannot prove you wrong, so it cannot teach you.
+
+---
+
+## 28. The escalation probe: measuring whether thinking pays
+
+**One line:** before labelling, answer some held-out examples both the cheap way and the
+expensive way, and let a paired test decide how much thinking this task deserves.
+
+**Picture:** a shop deciding whether to pay for express delivery. It does not argue about it;
+it sends forty parcels both ways and counts which ones arrived on time. If express is not
+clearly better, it keeps the cheap service.
+
+**See it** (real numbers from the two runs):
+
+| task | cheap rung | thinking | what a hand-set rule did |
+|---|---|---|---|
+| 2 count nouns/verbs | 43% (four samples, unanimous) | 14 of 15 | skipped thinking: 45% |
+| 6 same genre | 3 of 4 on the escalated inputs | 2 of 4 on the same inputs | thought, and lost one answer |
+| 7 trivia | 20% | 21% | thought on a third of inputs for no gain |
+
+One rule cannot be right for all three. A measurement can.
+
+**Step by step** (`TaskRunner._prepare_policy`):
+1. Take 40 examples from the second half of the calibration split. They were never in a
+   prompt, and the calibrator was fitted on the *first* half, so they are fair judges.
+2. Answer each one twice: cheap rung only, and thinking + 5 votes only.
+3. Mark each example *sure* or *unsure*, by whether the cheap rung would have stopped there.
+4. On the sure examples, count the disagreements: "only cheap right" (b) and "only thinking
+   right" (c). An exact McNemar test gives the chance of a split this lopsided if the two were
+   equally good. Do the same on the unsure examples.
+5. Decide: thinking wins on the **sure** ones → think for every input (`reason_first`); it wins
+   only on the **unsure** ones → the normal ladder; otherwise → never think (`cheap_only`).
+   "Wins" means c > b and p ≤ 0.10.
+
+**Why "ties go to cheap":** spending compute needs evidence, saving it does not. With 40
+examples a small benefit may be missed, and missing it costs a little accuracy. A large
+benefit, like task 2's 43% versus 93%, gives p below 0.0001 and cannot be missed.
+
+**Why paired:** two accuracies measured on different inputs mix "which method" with "which
+inputs". On the same inputs, every input where both are right or both wrong cancels out, and
+only the disagreements are evidence.
+
+**Try it yourself:** run `pytest tests/test_pipeline.py -k probe`. Two fake models stand in for
+the two cases: one whose quick answers are confidently wrong, one where thinking adds nothing.
+Read the test, predict the chosen policy, then run it.
+
+**Remember:** if a decision can be measured before you commit to it, measure it every time.

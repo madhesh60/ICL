@@ -245,3 +245,12 @@ def test_trivia_key_drops_articles_quotes_and_punctuation():
     assert trivia_key("The Beatles") == trivia_key('"beatles"') == "beatles"
     assert trivia_key("foot-and-mouth disease") == "foot and mouth disease"
     assert trivia_key("an apple") == "apple" and trivia_key("ant") == "ant"  # no over-stripping
+
+
+def test_norm_trivia_rejects_the_model_talking_instead_of_answering():
+    """E001 task 7: 'wait, the correct answer should be...' and 'clue: ...' won votes."""
+    assert norm_trivia('wait, the correct answer should be "oliver wendell holmes"') is None
+    assert norm_trivia("Clue: he was a losing super bowl quarterback") is None
+    assert norm_trivia(" ".join(["word"] * 13)) is None
+    assert norm_trivia("the 3:10 to yuma") == "the 3:10 to yuma"  # a real answer with a colon
+    assert norm_trivia("cockleshells and silver bells and pretty maids all in a row")

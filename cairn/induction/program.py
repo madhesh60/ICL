@@ -38,10 +38,12 @@ _SYSTEM = (
     "rule that maps each input to its output, and write that rule as code."
 )
 _ASK = (
-    "Write a Python function `solve(text: str) -> str`.\n"
-    "- `text` is exactly the string shown after 'Input:' in the examples.\n"
-    "- It must return exactly the string shown after 'Output:' (same spacing and punctuation).\n"
-    "- Use only the Python standard library.\n"
+    "Write a Python function `solve(text: str) -> str` that makes every assert above true.\n"
+    "- `text` is always a Python str. If it looks like a list or a number, it is still text:\n"
+    "  the brackets, quotes and commas are characters of the string. Parse it first if you\n"
+    "  need its parts (ast.literal_eval does this safely).\n"
+    "- Return a str that equals the right-hand side of the assert exactly.\n"
+    "- Use only the Python standard library. Do not use eval or exec.\n"
     "Reply with one Python code block and nothing else."
 )
 
@@ -56,6 +58,8 @@ class Attempt:
     # (usually while still thinking), so no code could follow.
     finish: str = ""
     thinking: bool = True
+    # True when this exact code had already been tried and failed.
+    repeated: bool = False
 
 
 @dataclass
@@ -81,17 +85,48 @@ class InductionResult:
         return self.program is not None
 
 
+def _diagnose(result: CallResult, example: Example) -> str:
+    """One counter-example, written so that the KIND of mistake is visible.
+
+    E001 lesson: "Got: ['cutting', 'y', ...]" looked like a list to the model, which then
+    rewrote the same function four times.  Shown with repr() and a plain-words note
+    ("returned its input unchanged"), the mistake names itself.
+    """
+    lines = [f"Call:     solve({example.input!r})", f"Expected: {example.output!r}"]
+    if not result.ok:
+        lines.append(f"Got:      ERROR {result.error}")
+        return "\n".join(lines)
+    lines.append(f"Got:      {result.value!r}")
+    notes = []
+    if result.kind != "str":
+        notes.append(f"it returned a {result.kind}, not a str")
+    if result.value == example.input:
+        notes.append("it returned its input unchanged")
+    if notes:
+        lines.append("Note:     " + "; ".join(notes))
+    return "\n".join(lines)
+
+
 def _score(results: Sequence[CallResult], examples: Sequence[Example]) -> tuple[float, list[str]]:
     """Accuracy and a few readable counter-examples."""
     wrong: list[str] = []
     hits = 0
     for result, example in zip(results, examples, strict=True):
-        if result.ok and result.value.strip() == example.output.strip():
+        if result.ok and result.kind == "str" and result.value.strip() == example.output.strip():
             hits += 1
         elif len(wrong) < 5:
-            got = result.value if result.ok else f"ERROR {result.error}"
-            wrong.append(f"Input: {example.input}\nExpected: {example.output}\nGot: {got}")
+            wrong.append(_diagnose(result, example))
     return hits / max(len(examples), 1), wrong
+
+
+def _normalise_code(code: str) -> str:
+    """Code with comments and blank lines removed, to recognise a repeated attempt."""
+    kept = []
+    for line in code.splitlines():
+        stripped = line.split("#", 1)[0].rstrip()
+        if stripped.strip():
+            kept.append(stripped)
+    return "\n".join(kept)
 
 
 class ProgramInducer:
@@ -137,6 +172,9 @@ class ProgramInducer:
         attempts: list[Attempt] = []
         feedback: tuple[tuple[str, str], ...] = ()
         thinking = self.thinking
+        # Failed programs seen so far, by normalised source: running the same code twice
+        # teaches nothing, and telling the model it repeated itself does.
+        failed: dict[str, Attempt] = {}
         for round_index in range(self.max_rounds):
             request = GenRequest(
                 messages=tuple(base) + feedback,
@@ -169,10 +207,15 @@ class ProgramInducer:
                     attempts.append(Attempt(round_index, reply[:200], 0.0, [why], finish, thinking))
                     log.info("program round %d: %s", round_index, why)
                     continue
-                accuracy, wrong = _score(
-                    run_function(code, [e.input for e in verify], limits=self.limits), verify
-                )
+                seen = failed.get(_normalise_code(code))
+                if seen is not None:
+                    accuracy, wrong = seen.verify_accuracy, list(seen.problems)
+                else:
+                    accuracy, wrong = _score(
+                        run_function(code, [e.input for e in verify], limits=self.limits), verify
+                    )
                 attempt = Attempt(round_index, code, accuracy, wrong, finish, thinking)
+                attempt.repeated = seen is not None
                 attempts.append(attempt)
                 log.info(
                     "program round %d: %.1f%% right on %d verify examples%s",
@@ -196,6 +239,7 @@ class ProgramInducer:
                     # Passed the shown tests, failed the hidden ones: it memorised
                     # cases instead of finding the rule.  Say so without revealing them.
                     attempt.problems = ["correct on the shown cases but wrong on hidden cases"]
+                failed.setdefault(_normalise_code(code), attempt)
                 if best is None or attempt.verify_accuracy > best.verify_accuracy:
                     best = attempt
 
@@ -214,13 +258,19 @@ class ProgramInducer:
                     feedback = (("user", "No Python code block was found. " + _ASK),)
                 continue
             listing = "\n\n".join(best.problems) or "It fails on hidden cases."
+            repeat_note = (
+                "You wrote this same function before, and it failed the same way. Do not "
+                "submit it again: change the approach.\n\n"
+                if getattr(best, "repeated", False)
+                else ""
+            )
             feedback = (
                 ("assistant", f"```python\n{best.code}\n```"),
                 (
                     "user",
-                    f"That function is right on {best.verify_accuracy:.0%} of the test cases. "
-                    f"Failures:\n\n{listing}\n\nFind the general rule and rewrite `solve`. "
-                    "Reply with one Python code block.",
+                    f"{repeat_note}That function is right on {best.verify_accuracy:.0%} of the "
+                    f"test cases. Failures:\n\n{listing}\n\nRemember that `text` is a str. "
+                    "Find the general rule and rewrite `solve`. Reply with one Python code block.",
                 ),
             )
         return InductionResult(None, attempts)

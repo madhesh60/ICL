@@ -76,6 +76,23 @@ class StrategyConfig:
     min_singleton_count: int = 10
     # Climb to the expensive rung when the cheap one is unsure.
     escalate: bool = True
+    # Skip the cheap rung entirely: every input thinks and votes first.  Set by hand, or
+    # chosen by the escalation probe below when held-out examples show the cheap rung is
+    # confidently wrong (E001 task 2: four unanimous cheap samples, right 43% of the time).
+    reason_first: bool = False
+    # Escalation probe: before labelling, answer this many held-out calib examples BOTH
+    # cheaply and expensively, then pick the policy from the measured, paired difference:
+    #   cheap_only    the expensive rung does not beat the cheap one (ties go to cheap)
+    #   ladder        it helps on the inputs the cheap rung is unsure about
+    #   reason_first  it helps even where the cheap rung is sure
+    # 0 = no probe; the settings above are used as written.
+    escalation_probe: int = 0
+    # Run the whole cheap rung (direct answer AND the quick samples) but never think.  Used
+    # by the probe, so that "sure" means what it means in the ladder, and by the cheap_only
+    # policy, so that production answers exactly the way the probe measured.
+    cheap_rung_only: bool = False
+    # A policy that spends more compute must win a paired (McNemar) test at this level.
+    probe_p_value: float = 0.10
     vote_n: int = 5
     think_max_tokens: int = 1024
     think_temperature: float = 0.6
@@ -95,6 +112,10 @@ class StrategyConfig:
     codegen_rounds: int = 3
     codegen_candidates: int = 2
     codegen_execute: bool = True
+    # The task-8 score is S_exec^2 / S_call: a kernel that runs but computes the wrong
+    # thing LOWERS it.  When execution proves the best candidate wrong (it disagrees with
+    # PyTorch's own function, or returns NaN/inf), hand in a stub that fails loudly instead.
+    abstain_on_proven_wrong: bool = True
     seed: int = 0
 
 
@@ -223,6 +244,19 @@ class Annotator:
             group_key=self.spec.vote_key,
         )
 
+    def is_sure(self, prediction: Prediction) -> bool:
+        """Would the cheap rung have stopped the ladder on this answer?
+
+        Used by the escalation probe to split held-out inputs into "the cheap rung was
+        sure" and "it was not", because the value of thinking differs between the two.
+        """
+        if prediction.source == "score":
+            plausible = prediction.meta.get("plausible", [])
+            return len(plausible) == 1 and self.trust_scores
+        if prediction.source == "generate":
+            return prediction.confidence >= self.config.agree_share
+        return prediction.source in {"program", "memory"}
+
     # ------------------------------------------------------------------ ladder
 
     def _climb(self, query: Query) -> Prediction:
@@ -241,7 +275,7 @@ class Annotator:
     def _classify(self, query: Query, prompt: BuiltPrompt) -> Prediction:
         cfg, labels = self.config, self.spec.labels
         meta = self._meta(prompt)
-        if not (cfg.use_scoring and labels and distinct_starts(labels)):
+        if cfg.reason_first or not (cfg.use_scoring and labels and distinct_starts(labels)):
             return self._free_form(query, prompt)
         try:
             raw, _ = score_options(self.backend, prompt.messages, labels)
@@ -272,10 +306,12 @@ class Annotator:
         cfg = self.config
         meta = self._meta(prompt)
         replies: list[str] = []
-        reason_first = self.spec.kind == "deterministic"
+        # Exact procedures always reason first (a glance cannot add 45 differences).  Other
+        # tasks do so when configured, or when the escalation probe measured that they should.
+        reason_first = self.spec.kind == "deterministic" or cfg.reason_first
         if not reason_first:
             replies.extend(a for a in self._direct(prompt) if a is not None)
-            if cfg.escalate and cfg.cheap_samples > 0:
+            if (cfg.escalate or cfg.cheap_rung_only) and cfg.cheap_samples > 0:
                 cheap = self._direct(
                     prompt, n=cfg.cheap_samples, temperature=0.7, tag="generate_sample"
                 )
@@ -284,7 +320,7 @@ class Annotator:
             meta["votes"] = vote.counts
             if vote.answer is not None and (not cfg.escalate or vote.share >= cfg.agree_share):
                 return Prediction(query.id, vote.answer, vote.share, "generate", meta)
-        if cfg.escalate:
+        if cfg.escalate or reason_first:
             thought = self._think_vote(prompt)
             # One count per reply, with the direct answers first so that they win ties.
             for answer, count in thought.counts.items():
@@ -390,6 +426,13 @@ class Annotator:
             exec_status=best.exec_status,
             open_issues=best.feedback,
         )
+        if cfg.abstain_on_proven_wrong and best.exec_status == "wrong_result":
+            # Proven wrong after every repair round.  Handing it in would raise S_call
+            # without raising S_exec, which lowers the score; a loud stub does neither.
+            stub = self._fallback(query, "abstained: the best kernel was proven wrong")
+            stub.meta.update(meta, exec_status="abstained", abstained_code=best.code)
+            stub.source = "abstain"
+            return stub
         return Prediction(query.id, best.code, _TIER_CONFIDENCE[best.tier], "codegen", meta)
 
     # ---------------------------------------------------------------- fallback

@@ -217,3 +217,25 @@ New running questions:
   The next run prints them.
 - Q9 On task 8, is the dominant execution outcome `unconfirmed_error` (input guessing) or
   `timeout` (compile time on T4)? The histogram decides the next fix.
+
+## K. Results from the second real run (E001, 60 dev inputs per task, 2026-11-17)
+
+Full analysis: `07_SECOND_RUN.md`. Five of eight predictions landed (1, 3, 5, 6, 7).
+
+- **Program induction confirmed** on tasks 1 and 3 (60/60 each, no model call per input).
+  Task 4 failed on a type confusion: `''.join(text)` over the input *string*. Fixed with
+  `repr()` assert examples, named mistakes in feedback, and repeat detection.
+- **Self-consistency is not a correctness gate.** Task 2's four cheap samples agreed on
+  nearly every input and were right 43% of the time. Same lesson as E000's conformal sets.
+- **New mechanism: the escalation probe** (measured policy per task: reason_first / ladder /
+  cheap_only). It replaces three hand-set decisions that were wrong in both directions.
+- **Thinking hurt task 6** in the journal counterfactual (3/4 → 2/4). Pooled with E000: 3 of 6.
+- **Task 7 is knowledge-bound** (40 of 48 errors are wrong facts). No new algorithm.
+- **Task 8 has no usable dev split** (0/184 demonstrations with a signature). Measure on test
+  inputs; 62/166 have a PyTorch twin. Metric-aware abstention added.
+- **Cache reuse measured with the real server:** 96–100% of prompt tokens on text tasks.
+
+New running questions:
+- Q10 Does the probe pick `reason_first` for task 2 and `cheap_only` for 5, 6, 7 (prediction)?
+- Q11 On task 8 test inputs, what share of kernels run at all, and which status dominates?
+- Q12 Does `vote_n: 3` keep task 2's accuracy at 60% of the cost (E003)?

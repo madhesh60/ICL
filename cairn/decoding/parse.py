@@ -92,12 +92,23 @@ def norm_text(text: str) -> str | None:
     return out or None
 
 
+_NOT_AN_ANSWER = re.compile(r"^(?:wait\b|hmm\b|clue\s*:|category\s*:|the answer\b)", re.IGNORECASE)
+
+
 def norm_trivia(text: str) -> str | None:
-    """Trivia answers: lower case, no quiz-show lead-in, no trailing full stop."""
+    """Trivia answers: lower case, no quiz-show lead-in, no trailing full stop.
+
+    Replies that are the model talking rather than answering ("wait, the correct answer
+    should be...", "clue: he was a losing quarterback") are rejected, so they cannot win
+    a vote (E001: 2 of 48 errors).  The longest gold answer in the data is 11 words, so
+    anything over 12 is talk too.
+    """
     out = _unwrap(final_segment(text)).lower()
     out = _QUESTION_LEAD.sub("", out)
     out = re.sub(r"\s+", " ", out).strip().rstrip(".?!").strip()
-    return out or None
+    if not out or _NOT_AN_ANSWER.match(out) or len(out.split()) > 12:
+        return None
+    return out
 
 
 _ARTICLE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)

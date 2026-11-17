@@ -1,0 +1,172 @@
+{
+  "task": 4,
+  "split": "dev",
+  "n": 60,
+  "seconds": 3831.2,
+  "sources": {
+    "think_vote": 60
+  },
+  "notes": {
+    "pool": 3193,
+    "clusters": 1,
+    "program": {
+      "accepted": false,
+      "attempts": 8,
+      "examples_shown": 48,
+      "verified_on": 150,
+      "confirmed_on": 150,
+      "best_verify_accuracy": 0.0,
+      "attempt_log": [
+        {
+          "round": 0,
+          "thinking": true,
+          "finish": "length",
+          "verify_accuracy": 0.0,
+          "problem": "token budget ran out before any code"
+        },
+        {
+          "round": 0,
+          "thinking": true,
+          "finish": "length",
+          "verify_accuracy": 0.0,
+          "problem": "token budget ran out before any code"
+        },
+        {
+          "round": 1,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        },
+        {
+          "round": 1,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        },
+        {
+          "round": 2,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        },
+        {
+          "round": 2,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        },
+        {
+          "round": 3,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        },
+        {
+          "round": 3,
+          "thinking": false,
+          "finish": "stop",
+          "verify_accuracy": 0.0,
+          "problem": "Input: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L', 'loss', 'D']\nExpected: cuttingyTthePtheZbNonlyLlossD\nGot: ['cutting', 'y', 'T', 'the', 'P', 'the', 'Z', 'b', 'N', 'only', 'L"
+        }
+      ],
+      "code": null
+    }
+  },
+  "usage": {
+    "induce_program": {
+      "calls": 4,
+      "cache_file_hits": 0,
+      "prompt_tokens": 8850,
+      "cached_tokens": 8800,
+      "kv_cache_share": 0.9944,
+      "completion_tokens": 8296,
+      "seconds": 267.6
+    },
+    "think_vote": {
+      "calls": 60,
+      "cache_file_hits": 0,
+      "prompt_tokens": 1851873,
+      "cached_tokens": 1848064,
+      "kv_cache_share": 0.9979,
+      "completion_tokens": 254845,
+      "seconds": 22590.32
+    }
+  },
+  "config": {
+    "context": {
+      "min_demo_tokens": null,
+      "selection": "coverage",
+      "coverage_target": "queries",
+      "label_balance": 0.5,
+      "bulk_order": "interleave",
+      "n_clusters": 1,
+      "global_frac": 0.5,
+      "tail_k": 8,
+      "tail_per_label": 2,
+      "tail_mmr": 1.0,
+      "tail_as_turns": true,
+      "restate_rule": true,
+      "seed": 0
+    },
+    "strategy": {
+      "use_program": true,
+      "use_scoring": true,
+      "calibration": "stack",
+      "conformal_alpha": 0.1,
+      "accept_confidence": 0.75,
+      "min_singleton_accuracy": 0.85,
+      "min_singleton_count": 10,
+      "escalate": true,
+      "vote_n": 5,
+      "think_max_tokens": 2048,
+      "think_temperature": 0.6,
+      "cheap_samples": 3,
+      "agree_share": 0.67,
+      "induce_guidelines": false,
+      "induction_examples": 48,
+      "induction_max_tokens": 4096,
+      "induction_rounds": 4,
+      "codegen_rounds": 3,
+      "codegen_candidates": 2,
+      "codegen_execute": true,
+      "seed": 0
+    },
+    "splits": {
+      "calib": 300,
+      "dev": 300,
+      "holdout": 200,
+      "max_reserved_frac": 0.35
+    },
+    "split_seed": 42,
+    "workers": 8,
+    "calib_limit": 300,
+    "memory": false,
+    "memory_wave": 64,
+    "memory_max_items": 48,
+    "memory_min_confidence": 0.95
+  },
+  "commit": "e34413c",
+  "model": "Qwen3-4B",
+  "eval": {
+    "n": 60,
+    "correct": 48,
+    "accuracy": 0.8,
+    "ci95": [
+      0.6822,
+      0.8817
+    ],
+    "ece": 0.0678,
+    "by_source": {
+      "think_vote": {
+        "n": 60,
+        "share": 1.0,
+        "accuracy": 0.8
+      }
+    }
+  }
+}

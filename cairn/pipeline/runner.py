@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -119,6 +119,8 @@ class TaskRunner:
             self._prepare_program(calib)
         if self.spec.kind == "classification" and cfg.strategy.use_scoring:
             self._prepare_calibration(calib)
+        if cfg.strategy.escalation_probe > 0 and self.spec.kind in {"classification", "generation"}:
+            self._prepare_policy(calib)
         if cfg.memory:
             self.memory = AnnotationMemory(
                 max_items=cfg.memory_max_items, min_confidence=cfg.memory_min_confidence
@@ -143,7 +145,13 @@ class TaskRunner:
         bulk = self.builder.bulk_examples(0)
         step = max(1, len(bulk) // max(1, cfg.induction_examples))
         shown = bulk[::step][: cfg.induction_examples]
-        examples_text = "# Examples\n\n" + "".join(render_demo(self.spec, e) for e in shown)
+        # Examples are written as executable asserts with Python's repr(), so the type of
+        # the input is unambiguous: solve("['p', 'o']") receives a STRING that looks like a
+        # list.  E001: written as "Input: ['p', 'o']", the model wrote ''.join(text) eight
+        # times in a row, which joins the characters of the string and returns it unchanged.
+        examples_text = "# Examples (every line must hold)\n\n" + "".join(
+            f"assert solve({e.input!r}) == {e.output!r}\n" for e in shown
+        )
         result = inducer.induce(self.task.definition, examples_text, calib[:half], calib[half:])
         self.program = result.program
         self.notes["program"] = {
@@ -306,6 +314,108 @@ class TaskRunner:
         }
         if keep:
             self.builder = with_rules
+
+    def _prepare_policy(self, calib: list[Example]) -> None:
+        """Measure, on held-out examples, whether thinking is worth its cost for this task.
+
+        Every probe example is answered twice: by the cheap rung alone and by the
+        expensive rung alone.  Because both answers exist for the SAME inputs, the
+        comparison is paired, and an exact McNemar test says whether a difference is
+        more than luck.  The probe examples come from the second calibration half (the
+        calibrator was fitted on the first), so they were never in a prompt and never
+        used to fit what they now judge.
+
+        The decision rule spends compute only on evidence, and prefers the cheaper policy
+        whenever the evidence is not strong enough:
+            the expensive rung wins on inputs the cheap rung was SURE about -> reason_first
+            it wins on the inputs the cheap rung was UNSURE about           -> ladder
+            otherwise                                                       -> cheap_only
+        """
+        assert self.builder is not None
+        cfg = self.config.strategy
+        probe_examples = calib[len(calib) // 2 :][: cfg.escalation_probe]
+        if len(probe_examples) < 10:
+            self.notes["policy"] = "skipped: too few held-out examples for the probe"
+            return
+        queries = [Query(e.id, e.input, e.output) for e in probe_examples]
+        common = {
+            "calibrator": self.calibrator,
+            "conformal": self.conformal,
+            "signal_fn": self.signal_fn,
+            "trust_scores": self.trust_scores,
+        }
+        cheap = Annotator(
+            self.spec, self.builder, self.meter,
+            replace(cfg, escalate=False, reason_first=False, cheap_rung_only=True), **common,
+        )  # fmt: skip
+        costly = Annotator(
+            self.spec, self.builder, self.meter,
+            replace(cfg, escalate=True, reason_first=True), **common,
+        )  # fmt: skip
+        try:
+            cheap_preds = self._annotate_all(cheap, queries)
+            costly_preds = self._annotate_all(costly, queries)
+        except LLMError as err:
+            self.notes["policy"] = f"probe failed ({err}); settings used as written"
+            return
+        cheap_hits = evaluate(cheap_preds, queries).hits
+        costly_hits = evaluate(costly_preds, queries).hits
+        sure = [cheap.is_sure(p) for p in cheap_preds]
+
+        def split(mask_value: bool) -> tuple[list[bool], list[bool]]:
+            a = [h for h, m in zip(cheap_hits, sure, strict=True) if m == mask_value]
+            b = [h for h, m in zip(costly_hits, sure, strict=True) if m == mask_value]
+            return a, b
+
+        rows: dict[str, dict[str, float]] = {}
+        for name, flag in (("sure", True), ("unsure", False)):
+            a, b = split(flag)
+            only_cheap, only_costly, p_value = mcnemar_exact(a, b)
+            rows[name] = {
+                "n": len(a),
+                "cheap_accuracy": round(sum(a) / len(a), 4) if a else 0.0,
+                "costly_accuracy": round(sum(b) / len(b), 4) if b else 0.0,
+                "only_cheap_right": only_cheap,
+                "only_costly_right": only_costly,
+                "p_value": round(p_value, 4),
+            }
+
+        def wins(row: dict[str, float]) -> bool:
+            return (
+                row["only_costly_right"] > row["only_cheap_right"]
+                and row["p_value"] <= cfg.probe_p_value
+            )
+
+        if wins(rows["sure"]):
+            policy = "reason_first"
+            self.config = replace(
+                self.config, strategy=replace(cfg, reason_first=True, escalate=True)
+            )
+        elif wins(rows["unsure"]):
+            policy = "ladder"
+            self.config = replace(
+                self.config, strategy=replace(cfg, reason_first=False, escalate=True)
+            )
+        else:
+            policy = "cheap_only"
+            self.config = replace(
+                self.config,
+                strategy=replace(cfg, reason_first=False, escalate=False, cheap_rung_only=True),
+            )
+        self.notes["policy"] = {
+            "chosen": policy,
+            "probe_examples": len(queries),
+            "cheap_accuracy": round(sum(cheap_hits) / len(cheap_hits), 4),
+            "costly_accuracy": round(sum(costly_hits) / len(costly_hits), 4),
+            "p_value_threshold": cfg.probe_p_value,
+            **rows,
+        }
+        log.info(
+            "task %d: escalation probe on %d held-out inputs: cheap %.0f%%, thinking %.0f%% -> %s",
+            self.task.task_id, len(queries),
+            100 * sum(cheap_hits) / len(cheap_hits), 100 * sum(costly_hits) / len(costly_hits),
+            policy,
+        )  # fmt: skip
 
     # --------------------------------------------------------------------- run
 
