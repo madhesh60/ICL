@@ -61,3 +61,11 @@ class TaskSpec:
     signals: Callable[[str], tuple[float, ...]] | None = None
     # Pools differently written answers into one vote (trivia: "the X" and "X").
     vote_key: Callable[[str], str] | None = None
+    # Rules every prompt states in its system part, when the labels follow a convention the
+    # task definition does not mention (task 2: compounds count per word, helper verbs do not).
+    guidelines: str = ""
+    # Decomposition: the model writes intermediate evidence, code computes the answer.
+    #   decompose(input) -> (instruction placed after the input, regex the reply must match)
+    #   recompose(reply) -> the answer, or None when the reply cannot be read
+    decompose: Callable[[str], tuple[str, str] | None] | None = None
+    recompose: Callable[[str], str | None] | None = None

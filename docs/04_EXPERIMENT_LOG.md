@@ -20,6 +20,7 @@ untouched second set; `test` = hidden-label submission set.
 | O009 | 2026-11-17 | 1,3,4 | all examples | do the labels follow the exact rule? (true rule run over every example) | 5500/5500, 3997/3997, 3993/3993 match | label noise is NOT why program induction failed in E000 |
 | O010 | 2026-11-17 | 8 | examples vs test | inputs with a parseable wrapper signature | demonstrations 0/184; test 166/166 | the dev split cannot measure execution; measure task 8 on test inputs (metric needs no gold) |
 | O011 | 2026-11-17 | 8 | test | test functions with a PyTorch function of the same name | 62/166 (div, tanh, matmul, conv2d, ...) | correctness is checkable for ~37% of test kernels; the rest only for "runs and is finite" |
+| O013 | 2026-11-18 | 2 | all examples | least-squares weight of each word in the label (verbs 2,755 / nouns 2,685 sentences) | verbs: is +0.02, are −0.02, has +0.57; nouns: living +0.81, it −0.44, front +0.30 | helper verbs not counted; compound words counted separately; pronouns not nouns (rules in `tasks/counting.py`, pinned by a data test) |
 | O012 | 2026-11-17 | 7 | trivia answers | longest gold answer; gold answers containing ':' or starting with "wait" | 11 words; 1 (`the 3:10 to yuma`); 0 | replies over 12 words or starting with "wait"/"clue:" are talk, not answers |
 
 ## Model runs (Qwen3-4B)
@@ -46,9 +47,17 @@ Analysis: `docs/06_FIRST_REAL_RUN.md`.
 | E001 | 2026-11-17 | 6 | dev (60) | unchanged | ≥30K | 93.3% (84..97) | score 93% @ 96%, think_vote 7% @ 50% | 408 | journal counterfactual: the 4 escalated had 3 right before thinking, 2 after |
 | E001 | 2026-11-17 | 7 | dev (60) | vote pooling by meaning | ≥30K | 20% (12..32) | generate 68% @ 20%, think_vote 32% @ 21% | 941 | 40/48 errors wrong knowledge, 6 near misses, 2 the model talking |
 | E001 | 2026-11-17 | 8 | dev (24) | Triton-friendly shapes, outcome histogram | ≥16K | consistency 0.000 | static OK 96%, `not_run` 24/24 | 1315 | **prediction missed**: dev inputs have no signature (O010), execution never attempted |
-| E002 | planned | all | dev (60); task 8 test (24) | after E001: escalation probe (40 held-out, paired McNemar, p ≤ 0.10); `repr()` assert induction + named mistakes + repeat detection; task 8 on test inputs + abstain on proven wrong; trivia talk filter; workers 3 for tasks 1–4; timeout 900 s | ≥30K | predictions in `07_SECOND_RUN.md` §8 | | | `scripts/kaggle_run.sh` (LIMIT=60, LIMIT8=24) |
-| E003 | planned | 2 | dev (100) | `vote_n` 3 vs 5 (paired) | ≥30K | | | | the cost lever for the most expensive task |
-| E004 | planned | 8 | test (24) | differential testing: model-written PyTorch reference for functions without a twin | ≥16K | | | | only after E002 shows how many kernels run at all |
+| E002 | 2026-11-17 | 1 | dev (60) | @ f13d95a | ≥30K | **100%** | program 100% | 253 | round 0 thinking ran out; no-think round 1 accepted |
+| E002 | 2026-11-17 | 3 | dev (60) | same | ≥30K | **100%** | program 100% | 252 | as task 1 |
+| E002 | 2026-11-17 | 4 | dev (60) | `repr()` assert induction | ≥30K | **100%** | program 100% | 134 | `''.join(ast.literal_eval(text))` accepted in round 0 |
+| E002 | 2026-11-17 | 2 | dev (60) | probe | ≥30K | 43.3% (32..56) | generate 100% @ 43% | 1925 | probe: cheap 50% vs thinking 60% → cheap_only; **124/200 thinking samples truncated at 768 tokens** |
+| E002 | 2026-11-17 | 5 | dev (60) | probe | ≥30K | 85.0% (74..92) | score 100% | 1362 | probe: cheap 75% vs thinking 80% → cheap_only |
+| E002 | 2026-11-17 | 6 | dev (60) | probe | ≥30K | **96.7%** (89..99) | score 100% | 2146 | probe: cheap 95% vs thinking 78% (8 vs 1, p = 0.039) → cheap_only |
+| E002 | 2026-11-17 | 7 | dev (60) | probe | ≥30K | 16.7% (9..28) | generate 98% | 2054 | probe: cheap 20% vs **thinking 38%** (9 vs 2 overall, p = 0.065); split groups lost the signal → cheap_only |
+| E002 | 2026-11-17 | 8 | dev (24) | old notebook cell ran dev | ≥16K | 0.000 | `not_run` 24/24 | 1289 | still not measured; CLI now redirects to test inputs |
+| E003 | planned | all | dev (60); task 8 on test inputs | counting rules + listing rung (task 2); probe tests overall difference first; task 2 thinking 1536 tokens; task 8 auto-redirect | ≥30K | predictions in `08_THIRD_RUN.md` §8 | | | any notebook cell works; `scripts/kaggle_run.sh` preferred |
+| E004 | planned | 2 | dev (100) | `vote_n` 3 vs 5 (paired), only if the probe picks thinking | ≥30K | | | | the cost lever for the most expensive task |
+| E005 | planned | 8 | test (24) | differential testing: model-written PyTorch reference for functions without a twin | ≥16K | | | | only after E002 shows how many kernels run at all |
 
 ## Decisions made from this log
 - O001 → answers are read by one-token scoring or constrained generation; every ladder ends in a model-free answer.
@@ -66,3 +75,7 @@ Analysis: `docs/06_FIRST_REAL_RUN.md`.
 - E001 (task 8) + O010 → task 8 is measured on test inputs; kernels proven wrong are replaced by a loud stub (S_exec²/S_call algebra).
 - E001 (task 7) → no new algorithm (knowledge-bound); talking replies are rejected by the normaliser (O012).
 - E001 (systems) → workers × vote_n ≤ server `--max-num-seqs`; tasks 1–4 use 3 workers; timeout 900 s.
+- E002 (tasks 1/3/4) → all three exact tasks solved by verified programs.
+- E002 (task 2) + O013 → counting rules in the system prompt; listing rung (model names words, code counts); thinking budget 1536.
+- E002 (task 7) → selection bias in E000/E001 ("thinking ≈ cheap") corrected by the paired probe; the probe now tests the overall difference first, groups only choose where to think.
+- E002 (task 8) → the CLI measures code tasks on test inputs whenever dev inputs cannot be executed.

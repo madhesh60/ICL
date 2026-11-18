@@ -239,3 +239,20 @@ New running questions:
 - Q10 Does the probe pick `reason_first` for task 2 and `cheap_only` for 5, 6, 7 (prediction)?
 - Q11 On task 8 test inputs, what share of kernels run at all, and which status dominates?
 - Q12 Does `vote_n: 3` keep task 2's accuracy at 60% of the cost (E003)?
+
+## L. Results from the third real run (E002, 60 dev inputs per task, 2026-11-17)
+
+Full analysis: `08_THIRD_RUN.md`. Six of eight predictions landed.
+
+- **Tasks 1, 3, 4 solved** by verified programs (task 4 after the `repr()` assert fix).
+- **Task 2 thinking was starved:** 124/200 samples truncated at 768 tokens. The labels follow a
+  tagger-like convention (O013). New: counting rules in the prompt; listing rung with code counting.
+- **Task 7: my "knowledge-bound" conclusion was selection bias.** Paired probe: thinking 38% vs
+  cheap 20%. The probe's split-group rule lost this signal; it now tests overall first.
+- **Task 6: thinking hurts** (78% vs 95%, p = 0.039). Probe keeps it off.
+- **Task 8 still unmeasured** (older notebook cell ran dev). CLI now redirects by itself.
+
+New running questions:
+- Q13 Does the listing rung beat thinking-at-1536 on task 2 in the probe?
+- Q14 Which words does the listing rung get wrong most often (read `lists` in the journal)?
+- Q15 First task-8 execution histogram on the Kaggle GPU.

@@ -47,6 +47,7 @@ def system_prompt(spec: TaskSpec, definition: str, guidelines: str = "") -> str:
         f"# Task\n{definition.strip()}",
         f"# Output format\n{spec.answer_rule}",
     ]
-    if guidelines.strip():
-        parts.append(f"# Guidelines learned from the examples\n{guidelines.strip()}")
+    rules = "\n".join(text.strip() for text in (spec.guidelines, guidelines) if text.strip())
+    if rules:
+        parts.append(f"# Guidelines learned from the examples\n{rules}")
     return "\n\n".join(parts)

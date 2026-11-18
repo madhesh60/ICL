@@ -68,19 +68,23 @@ tasks:
   1: { workers: 3, context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
   3: { workers: 3, context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
   4: { workers: 3, context: { tail_k: 8 }, strategy: { think_max_tokens: 2048 } }
-  # Counting nouns/verbs.  One-token scoring was right on 29% of its sure answers (E000), so
-  # it is skipped.  The probe then compares the remaining cheap rung (4 constrained samples,
-  # E001: unanimous and right 43% of the time) with thinking (E000+E001: 14 of 15).  Expected
-  # probe decision: reason_first.
-  2: { workers: 3, strategy: { use_scoring: false, think_max_tokens: 768 } }
+  # Counting nouns/verbs.  E002: 43%.  Thinking hit its 768-token limit on 124 of 200 samples,
+  # and the labels follow a convention the definition never states (compounds count per word,
+  # helper verbs do not; measured in docs/08_THIRD_RUN.md).  Now: the convention is in the
+  # system prompt (task card), and the first rung LISTS the words in a constrained format
+  # while code counts them.  The probe compares that rung with thinking at a budget that
+  # can finish (1536 tokens).
+  2: { workers: 3, strategy: { use_scoring: false, think_max_tokens: 1536 } }
   # Tweet sadness and same-genre: one-token scoring with stacked calibration is the cheap
   # rung (E001: 85% and 96% on what it answered).  Escalation looked harmful in both runs
   # (task 5: 1 of 5 in E000; task 6: the 4 escalated inputs had 3 right before thinking and
   # 2 after, E001).  The probe decides; the hand-set `escalate: false` for task 5 is gone.
   5: {}
   6: {}
-  # Trivia: both rungs near 20% in both runs.  The probe will most likely pick cheap_only,
-  # which saves about 50 minutes of thinking per 500 inputs at no measured cost.
+  # Trivia.  E000/E001 compared the rungs on DIFFERENT inputs (thinking only saw the hard
+  # ones) and wrongly concluded thinking adds nothing.  E002's paired probe: thinking 38% vs
+  # cheap 20% on the same 40 inputs (9 vs 2 disagreements, p = 0.065).  The probe now tests
+  # the overall difference first, so it can act on that.
   7:
     context: { n_clusters: 4, tail_k: 16 }      # trivia: topic-specific examples help the tail
   # Kernels.  Measure on the TEST inputs (`--split test --limit 24`): the 184 demonstration

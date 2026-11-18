@@ -202,6 +202,20 @@ def _run_one(
     backend = make_backend(app.backend, task_dir / "responses.sqlite")
     runner = TaskRunner(task, backend, get_counter(args.tokenizer), run_cfg)
     queries = list(task.test) if args.split == "test" else runner.splits.as_queries(args.split)
+    measured_on = args.split
+    if runner.spec.kind == "code" and args.split != "test":
+        from cairn.tasks.kernel import parse_wrapper_signature
+
+        if not any(parse_wrapper_signature(q.input) for q in queries):
+            # Task 8's demonstrations describe existing code and carry no wrapper signature
+            # (0 of 184), so a dev input can never be executed (E001 and E002: 24/24
+            # "not_run").  The code metric needs no gold answer, so measure on test inputs.
+            queries = list(task.test)
+            measured_on = "test"
+            print(
+                f"task {task_id}: {args.split} inputs have no wrapper signature to execute; "
+                f"measuring on the first {args.limit or len(queries)} TEST inputs instead"
+            )
     queries = queries[: args.limit]
     started = time.time()
     journal = _open_journal(task_dir, args.split, run_cfg, backend.model, fresh=args.fresh)
@@ -209,6 +223,7 @@ def _run_one(
     summary: dict[str, object] = {
         "task": task_id,
         "split": args.split,
+        "measured_on": measured_on,
         "n": len(predictions),
         "seconds": round(time.time() - started, 1),
         "sources": _count(p.source for p in predictions),
@@ -277,7 +292,7 @@ def _print_preparation_notes(notes: dict[str, object]) -> None:
             f"held-out inputs: cheap {policy['cheap_accuracy']:.0%}, thinking "
             f"{policy['costly_accuracy']:.0%}"
         )
-        for name in ("sure", "unsure"):
+        for name in ("all", "sure", "unsure"):
             row = policy[name]
             if row["n"]:
                 print(

@@ -214,3 +214,16 @@ def test_doctor_explains_an_unreachable_server():
     )
     checks = run_checks(backend)
     assert len(checks) == 1 and not checks[0].ok and "base_url" in checks[0].advice
+
+
+@pytest.mark.data
+def test_code_task_on_dev_is_measured_on_test_inputs(tmp_path, capsys):
+    """Task 8's dev inputs carry no wrapper signature, so nothing there can be executed.
+    Asking for dev must measure on test inputs instead, whatever script calls the CLI."""
+    run_dir = tmp_path / "run"
+    code = main(["--config", "configs/offline.yaml", "run", "--task", "8", "--split", "dev",
+                 "--limit", "2", "--run-dir", str(run_dir)])  # fmt: skip
+    assert code == 0
+    assert "measuring on the first 2 TEST inputs" in capsys.readouterr().out
+    report = json.loads((run_dir / "task8" / "dev.report.json").read_text())
+    assert report["measured_on"] == "test" and report["code_quality"]["n"] == 2

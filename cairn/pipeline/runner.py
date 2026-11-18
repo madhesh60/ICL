@@ -327,9 +327,10 @@ class TaskRunner:
 
         The decision rule spends compute only on evidence, and prefers the cheaper policy
         whenever the evidence is not strong enough:
-            the expensive rung wins on inputs the cheap rung was SURE about -> reason_first
-            it wins on the inputs the cheap rung was UNSURE about           -> ladder
-            otherwise                                                       -> cheap_only
+            thinking wins the paired test over ALL probe inputs, and also wins
+              among the inputs the cheap rung was sure about                  -> reason_first
+            thinking wins overall, or wins among the unsure inputs           -> ladder
+            otherwise                                                        -> cheap_only
         """
         assert self.builder is not None
         cfg = self.config.strategy
@@ -368,8 +369,9 @@ class TaskRunner:
             return a, b
 
         rows: dict[str, dict[str, float]] = {}
-        for name, flag in (("sure", True), ("unsure", False)):
-            a, b = split(flag)
+        groups = (("all", None), ("sure", True), ("unsure", False))
+        for name, flag in groups:
+            a, b = (cheap_hits, costly_hits) if flag is None else split(flag)
             only_cheap, only_costly, p_value = mcnemar_exact(a, b)
             rows[name] = {
                 "n": len(a),
@@ -386,12 +388,19 @@ class TaskRunner:
                 and row["p_value"] <= cfg.probe_p_value
             )
 
-        if wins(rows["sure"]):
+        # E002 lesson: testing the sure and unsure groups separately splits 40 inputs into
+        # two small samples and loses the signal (task 7: thinking right on 9 inputs the
+        # cheap rung missed, wrong on 2 it got, p = 0.065 overall, but 0.18 and 0.50 per
+        # group).  So the OVERALL paired test decides whether thinking pays at all; the
+        # groups only decide where to spend it.
+        thinking_pays = wins(rows["all"])
+        helps_when_sure = rows["sure"]["only_costly_right"] > rows["sure"]["only_cheap_right"]
+        if thinking_pays and helps_when_sure:
             policy = "reason_first"
             self.config = replace(
                 self.config, strategy=replace(cfg, reason_first=True, escalate=True)
             )
-        elif wins(rows["unsure"]):
+        elif thinking_pays or wins(rows["unsure"]):
             policy = "ladder"
             self.config = replace(
                 self.config, strategy=replace(cfg, reason_first=False, escalate=True)

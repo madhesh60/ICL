@@ -544,3 +544,109 @@ def test_probe_picks_the_ladder_when_thinking_helps_only_where_the_cheap_rung_is
     assert policy["chosen"] == "ladder", policy
     assert policy["sure"]["only_costly_right"] == 0 and policy["unsure"]["only_costly_right"] > 5
     assert runner.config.strategy.escalate is True and runner.config.strategy.reason_first is False
+
+
+# ------------------------------------------------- E002 follow-up: listing rung, probe rule
+
+
+def _count_spec_builder(counter):
+    pool = [
+        Example(
+            f"c{i}",
+            f"Sentence: 'a dog number {i} sits on a mat'. Count the number of nouns in this sentence.",
+            "3",
+        )
+        for i in range(400)
+    ]
+    spec = get_task(2, tuple("0123456"))
+    return spec, ContextBuilder(spec, pool, counter, CTX, definition="count")
+
+
+COUNT_Q = Query(
+    "q",
+    "Sentence: 'A man riding a white horse on a sandy beach'. Count the number of nouns in this sentence.",
+)
+
+
+def test_the_listing_rung_counts_in_code(counter):
+    """The model names the words; len() does the counting.  Votes are over counts."""
+    spec, builder = _count_spec_builder(counter)
+    seen = []
+
+    def reply(request):
+        seen.append(request)
+        if request.tag == "decompose":
+            return ["Nouns: man, horse, beach"] * (request.n - 1) + ["Nouns: man, beach"]
+        return ["9"] * request.n
+
+    prediction = Annotator(
+        spec, builder, FunctionBackend(reply), StrategyConfig(use_scoring=False)
+    ).annotate(COUNT_Q)
+    assert (prediction.answer, prediction.source) == ("3", "decompose")
+    assert prediction.meta["votes"] == {"3": 4.0, "2": 1.0}
+    request = seen[0]
+    assert request.thinking is False and request.constraint is not None
+    assert "list the nouns" in request.messages[-1][1]
+    assert "tennis court" in request.messages[0][1]  # the counting rules are in the system prompt
+
+
+def test_a_rejected_format_constraint_costs_a_retry_not_the_input(counter):
+    spec, builder = _count_spec_builder(counter)
+    constraints = []
+
+    def reply(request):
+        if request.tag == "decompose":
+            constraints.append(request.constraint)
+            if request.constraint is not None:
+                raise BadRequestError("regex not supported")
+            return ["Nouns: man, horse, beach"] * request.n
+        return ["9"] * request.n
+
+    prediction = Annotator(
+        spec, builder, FunctionBackend(reply), StrategyConfig(use_scoring=False)
+    ).annotate(COUNT_Q)
+    assert prediction.source == "decompose" and prediction.answer == "3"
+    assert constraints[0] is not None and constraints[1] is None
+
+
+def test_unreadable_lists_hand_over_to_the_normal_ladder(counter):
+    spec, builder = _count_spec_builder(counter)
+
+    def reply(request):
+        if request.tag == "decompose":
+            return ["I am not sure"] * request.n
+        return ["2"] * request.n
+
+    strategy = StrategyConfig(use_scoring=False, escalate=False)
+    prediction = Annotator(spec, builder, FunctionBackend(reply), strategy).annotate(COUNT_Q)
+    assert (prediction.answer, prediction.source) == ("2", "generate")
+
+
+def test_probe_acts_on_an_overall_difference_that_each_group_alone_cannot_show(counter):
+    """E002 task 7: thinking won 9-2 overall (p = 0.065) but no group alone was significant.
+
+    Here 10 probe inputs: 5 the cheap rung is sure about and wrong, 5 it is unsure about and
+    wrong; thinking is right on all 10.  Each group is 5-0, p = 0.0625 > 0.05; overall 10-0,
+    p = 0.002.  The old rule chose cheap_only; the new one must not."""
+    import re
+
+    def reply(request):
+        number = int(re.findall(r"clue number (\d+)", request.messages[-1][1])[-1])
+        if request.thinking:
+            return [f"<think>...</think>answer{number}"] * request.n
+        if number % 2 == 0 or request.temperature == 0:
+            return ["wrong"] * request.n
+        return [f"guess {i}" for i in range(request.n)]
+
+    config = RunConfig(
+        context=CTX,
+        calib_limit=80,
+        workers=2,
+        strategy=StrategyConfig(escalation_probe=10, probe_p_value=0.05),
+    )
+    runner = TaskRunner(_trivia_task(), FunctionBackend(reply), counter, config)
+    runner.prepare(runner.splits.as_queries("dev")[:2])
+    policy = runner.notes["policy"]
+    assert policy["all"]["p_value"] < 0.01
+    assert policy["sure"]["p_value"] > 0.05 or policy["unsure"]["p_value"] > 0.05
+    assert policy["chosen"] in {"reason_first", "ladder"}, policy

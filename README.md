@@ -22,6 +22,7 @@ Apache-2.0
 |---|---|
 | **Learn the ideas** | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md): every technique explained with a picture, a real example and the reasoning behind it |
 | **First real run, diagnosed** | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md): how the result was validated, what was broken, what changed, and predictions for the next run |
+| **Third run: the probe corrects me** | [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md): tasks 1, 3, 4 solved; selection bias found in my own earlier conclusion; the counting convention measured from data |
 | **Second run: predictions scored** | [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md): five of eight predictions landed; why three missed; the decision to fix three things and add one algorithm |
 | **Every number with its source** | [`docs/04_EXPERIMENT_LOG.md`](docs/04_EXPERIMENT_LOG.md) (model runs) · [`docs/results/offline_benchmarks.md`](docs/results/offline_benchmarks.md) (no model needed) |
 | **Run it on a free GPU** | [`scripts/kaggle_run.sh`](scripts/kaggle_run.sh): one Kaggle cell, 2 × T4, from clone to scored report: [Installation](#installation-and-reproduction) |
@@ -173,6 +174,7 @@ Per task, before any test input   (preparation on the calib split)
   induce      exact tasks: the model writes solve(); accept only if it reproduces verify AND confirm exactly
 
 Per input
+  count   (2)         0 list the nouns/verbs in a fixed format, no thinking; code counts; 5 lists vote
   labels  (2, 5, 6)   1 read label probabilities from ONE token → calibrate → conformal set
                       2 one plausible label and the gate trusts it → done
                       3 otherwise think + 5 votes, only among the plausible labels
@@ -312,6 +314,34 @@ Cairn therefore prefers a kernel that fails loudly over one that returns wrong n
 
 ## Results
 
+### Third Real Run (E002)
+
+Kaggle, 2 × T4, commit `f13d95a`, 60 development inputs per task, 2026-11-17. Raw log:
+[`docs/results/kaggle_run_2026-11-17b_raw.md`](docs/results/kaggle_run_2026-11-17b_raw.md) · reports:
+[`docs/results/e002_reports/`](docs/results/e002_reports/) · analysis: [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md).
+
+| Task | Accuracy (95% interval) | Answered by | Escalation probe (40 held-out inputs, same inputs both ways) |
+|---|---|---|---|
+| 1 closest integers | **100%** (94–100) | verified program | — |
+| 2 count nouns / verbs | 43.3% (32–56) | cheap rung | cheap 50% vs thinking 60%; 124 of 200 thinking samples cut off at 768 tokens |
+| 3 Collatz step | **100%** (94–100) | verified program | — |
+| 4 concatenate strings | **100%** (94–100) | verified program, accepted in round 0 | — |
+| 5 tweet sadness | **85.0%** (74–92) | calibrated one-token score | cheap 75% vs thinking 80% → no thinking |
+| 6 same genre | **96.7%** (89–99) | calibrated one-token score | cheap 95% vs thinking 78% (8 to 1, p = 0.039) → no thinking |
+| 7 Jeopardy answer | 16.7% (9–28) | cheap rung | cheap 20% vs **thinking 38%** (9 to 2, p = 0.065) |
+| 8 Triton kernel | not measured | dev inputs again (older notebook cell) | — |
+
+Mean over tasks 1–7: **77.4%** (E001: 74.8%; E000: 67.9%). What changed after this run:
+
+- **Task 2.** The labels follow a convention the task never states, found by regressing labels on words and
+  reading labelled sentences: each word of a compound noun counts ("tennis court" = 2), helper verbs do not ("is
+  using" = 1). The rules now sit in the system prompt, and a new listing rung asks the model to *name* the nouns
+  or verbs in a constrained format while code counts them. Thinking gets 1,536 tokens so it can finish.
+- **Task 7.** Earlier runs compared thinking only on hard inputs with the cheap rung on all inputs, and concluded
+  "thinking adds nothing". The paired probe shows it nearly doubles accuracy. The probe now tests the overall
+  difference first, instead of splitting 40 inputs into two groups too small to show it.
+- **Task 8.** The CLI itself now measures code tasks on test inputs whenever dev inputs cannot be executed.
+
 ### Second Real Run (E001): Predictions Scored
 
 Kaggle, 2 × Tesla T4, vLLM 0.12.0, commit `e34413c`, 60 development inputs per task (24 for task 8), 2026-11-17.
@@ -348,15 +378,15 @@ on task 8. It showed which rungs work and exposed three defects: program inducti
 wrong cheap rung was trusted, and kernel execution was silent. All three were fixed before E001, and E001 confirms
 the first fix (tasks 1 and 3 at 100%).
 
-### Predictions for the Next Run (E002)
+### Predictions for the Next Run (E003)
 
-Written before the run, as in [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md) §8.
+Written before the run, as in [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md) §8.
 
 | Task | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
-| **Predicted** | 100% | 82–95% | 100% | 97–100% | 80–90% | 90–97% | 17–30% | callable 10–50%, consistency 0.00–0.20 |
+| **Predicted** | 100% | 65–85% | 100% | 100% | 80–90% | 93–99% | 25–42% | callable 10–50%, consistency 0.00–0.20 |
 
-Predicted mean over tasks 1–7: about **85–89%**.
+Predicted mean over tasks 1–7: about **80–87%**.
 
 ### Measured Without a Model
 
@@ -370,7 +400,7 @@ Predicted mean over tasks 1–7: about **85–89%**.
 | Kernel static checker on the dataset's own reference kernels | **183 of 184** pass; the one flagged really calls `tl.cidv` | examples (O007) |
 | Wrapper signatures parsed from the code task's test inputs | **166 of 166** | test inputs (O008) |
 | Labels of tasks 1, 3, 4 consistent with their stated rules | **13,490 of 13,490** | all examples (O009) |
-| Test suite | **157** tests, including real Triton kernels executed on CPU | CI: Ubuntu, Python 3.10 and 3.12 |
+| Test suite | **170** tests, including real Triton kernels executed on CPU | CI: Ubuntu, Python 3.10 and 3.12 |
 
 Every row is regenerated by `cairn bench` or listed with its command in the experiment log.
 
@@ -402,6 +432,12 @@ decision it led to. Negative and provisional results are kept. *Shipped* means o
 | E001 · 6 | Did escalation help? (counterfactual from the journal) | 3 of 4 right before thinking, 2 of 4 after | ❌ thinking hurt; the probe decides per task |
 | E001 · 7 | What are the errors? | 40 of 48 wrong knowledge, 6 near misses, 2 the model talking | ➖ no new algorithm; talking replies rejected |
 | E001 · 8 | Why did nothing run? | 0 of 184 demonstrations have a signature; 166 of 166 test inputs do | ✅ measured on test inputs; abstain on proven-wrong kernels |
+| E002 · 1, 3, 4 | Do verified programs solve the exact tasks? | 60/60 on all three; 134–253 s each | ✅ confirmed |
+| E002 · 2 | Why is thinking only 60%? | 124 of 200 thinking samples hit the 768-token limit | ✅ fixed: budget 1,536; listing rung where code counts |
+| O013 | Which counting convention do the labels follow? | regression on words: "is" +0.02, "are" −0.02, "living" +0.81 | ✅ rules in the prompt, pinned by a data test |
+| E002 · 7 | Does thinking help trivia, on the same inputs? | 38% vs 20% (9 to 2) | ✅ earlier "no" was selection bias; probe tests the overall difference first |
+| E002 · 6 | Does thinking help same-genre? | 78% vs 95% (1 to 8, p = 0.039) | ❌ thinking hurts; probe keeps it off |
+| E002 · 8 | Is task 8 measured? | no: dev inputs again | ✅ the CLI redirects to test inputs by itself |
 | E001 · all | Does the tree prompt reuse the cache? | 96–100% of prompt tokens served from cache | ✅ confirmed with the real server |
 | — | Induced annotation rulebooks | built and tested offline; kept only if a paired test says they do not hurt | ⏳ off until measured |
 | — | Append-only session memory | built and tested offline | ⏳ off until measured |
@@ -499,7 +535,7 @@ cairn submit --run-dir runs/r1 --out submission.zip               # every id onc
 
 ```bash
 pip install -e ".[dev]"
-pytest                                   # 157 tests
+pytest                                   # 170 tests
 cairn inspect                            # tasks, splits, token sizes
 cairn baseline                           # model-free reference scores
 cairn bench                              # every offline number → docs/results/offline_benchmarks.md
@@ -537,9 +573,10 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 
 ## Limitations
 
-- **Two real runs, at most 60 inputs per task.** Intervals are about ±12 points. The fixes made after E001
-  (escalation probe, induction contract, task-8 measurement) are tested with stand-in models, not yet with
-  Qwen3-4B; the predictions above are untested until E002 runs.
+- **Three real runs, at most 60 inputs per task.** Intervals are about ±12 points. The fixes made after E002
+  (counting rules, listing rung, revised probe rule, task-8 redirect) are tested with stand-in models, not yet with
+  Qwen3-4B; the predictions above are untested until E003 runs.
+- **Task 8 has never been executed on the GPU.** Three runs measured nothing; the first real number comes from E003.
 - **The probe is small.** Forty held-out inputs detect large gains (task 2) but can miss small ones; by design it
   then keeps the cheaper policy.
 - **Task 8 has no development split.** Its demonstrations differ in format from its test inputs, so it is measured
@@ -571,6 +608,7 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 |---|---|
 | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) | every idea explained in five parts: one line, a picture, a real example, the steps, one line to remember |
 | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md) | validating a real result, diagnosing it, a twelve-step reasoning method, a time budget, predictions |
+| [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md) | selection bias, silent truncation, finding a label convention in the data, decomposition, statistical power |
 | [`docs/07_SECOND_RUN.md`](docs/07_SECOND_RUN.md) | scoring predictions, three misses and their lessons, free experiments from the journal, the fix-or-add decision, the escalation probe |
 | [`docs/04_EXPERIMENT_LOG.md`](docs/04_EXPERIMENT_LOG.md) | every measurement and run, one change per row, with the decision it led to |
 | [`docs/results/offline_benchmarks.md`](docs/results/offline_benchmarks.md) | every number that needs no model, regenerated by `cairn bench` |
@@ -593,7 +631,7 @@ cairn/
 └── config.py · doctor.py · submit.py · cli.py
 configs/    settings profiles and server launch files (vLLM, FlagScale)
 scripts/    kaggle_run.sh (2 × T4) · gpu_run.sh (one GPU)
-tests/      157 tests, including a fake HTTP model server and Triton kernels on CPU
+tests/      170 tests, including a fake HTTP model server and Triton kernels on CPU
 docs/       learning guide, run analysis, experiment log, results, plan, notebook
 OpenSeek/   the official competition repository: data and baseline, unchanged
 ```

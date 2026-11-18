@@ -55,6 +55,8 @@ commands. Do the exercises at the end. Then write your own notes in
 26. Reading a real result (pointer to `06_FIRST_REAL_RUN.md`)
 27. Scoring your own predictions (pointer to `07_SECOND_RUN.md`)
 28. The escalation probe: measuring whether thinking pays
+29. Finding a label convention in the data
+30. Decomposition: the model names, code computes
 
 ---
 
@@ -923,6 +925,8 @@ Cairn itself that was false:
 ---
 
 ## 28. The escalation probe: measuring whether thinking pays
+29. Finding a label convention in the data
+30. Decomposition: the model names, code computes
 
 **One line:** before labelling, answer some held-out examples both the cheap way and the
 expensive way, and let a paired test decide how much thinking this task deserves.
@@ -966,3 +970,55 @@ the two cases: one whose quick answers are confidently wrong, one where thinking
 Read the test, predict the chosen policy, then run it.
 
 **Remember:** if a decision can be measured before you commit to it, measure it every time.
+
+---
+
+## 29. Finding a label convention in the data
+
+**One line:** when labels come from some procedure you cannot see, recover the procedure's
+rules from the labels themselves before asking a model to imitate them.
+
+**Picture:** a new job where the old clerk filed everything by rules nobody wrote down. You
+do not guess; you look at a few hundred filed folders, notice what always goes together,
+then check your guesses on folders you have not looked at.
+
+**See it** (task 2, `docs/08_THIRD_RUN.md` §3): a least-squares fit of each verb label on the
+words of its sentence gave "is" a weight of +0.02 and "are" −0.02. Those words appear in
+hundreds of sentences and never raise the count, so helper verbs are not counted. On the
+noun side "living" scored +0.81: in "living room", both words count.
+
+**Step by step:**
+1. Fit `label ≈ Σ weight(word) × count(word) + constant` with `numpy.linalg.lstsq`.
+2. Read the weights of frequent words: near 1 means "counted", near 0 means "not counted".
+3. Read labelled sentences that test each hypothesis directly ("A man is using a cell phone to
+   photograph a barn" has 2 verbs: using, photograph).
+4. Write the rules down, and put the test sentences in a test, so the rules cannot drift.
+
+**Try it:** run the regression yourself for the noun questions and find two more words whose
+weight surprises you. Then find a labelled sentence that confirms or refutes each.
+
+**Remember:** a model cannot follow a rule nobody stated. Find it, state it, test it.
+
+---
+
+## 30. Decomposition: the model names, code computes
+
+**One line:** when the answer is a number derived from items, ask the model for the items and
+let code compute the number.
+
+**Picture:** at a till, the cashier scans each item and the machine adds up the bill. Nobody
+asks the cashier to look at the trolley and guess the total.
+
+**See it:** asked "how many nouns?", Qwen3-4B's four quick samples agreed and were right 43% of
+the time; asked to think, it ran out of tokens on 62% of samples. Asked instead for
+`Nouns: tennis, player, racket, tennis, court`, it does a reading task, and `len()` does the
+counting (`Annotator._decompose`, `cairn/tasks/counting.py`).
+
+**Step by step:**
+1. After the input, ask for the evidence in a fixed format, with thinking off.
+2. Let the server enforce the format (structured output), so every reply can be read.
+3. Compute the answer in code from each reply; vote over several sampled replies.
+4. If the server rejects the format, retry once without it; if nothing is readable, fall back
+   to the normal ladder.
+
+**Remember:** a small model reads well and counts badly. Give each job to whoever does it best.

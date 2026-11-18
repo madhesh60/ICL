@@ -40,7 +40,7 @@ import numpy as np
 from cairn.context.builder import BuiltPrompt, ContextBuilder
 from cairn.decoding.calibrate import IdentityCalibrator
 from cairn.decoding.conformal import SplitConformal
-from cairn.decoding.constraints import satisfies
+from cairn.decoding.constraints import Regex, satisfies
 from cairn.decoding.parse import extract_code
 from cairn.decoding.score import distinct_starts, score_options
 from cairn.decoding.vote import VoteResult, majority_vote
@@ -87,6 +87,11 @@ class StrategyConfig:
     #   reason_first  it helps even where the cheap rung is sure
     # 0 = no probe; the settings above are used as written.
     escalation_probe: int = 0
+    # Decomposition rung (tasks whose card defines it): the model lists the evidence in a
+    # constrained format, code computes the answer, several samples vote.
+    use_decompose: bool = True
+    decompose_samples: int = 5
+    decompose_temperature: float = 0.6
     # Run the whole cheap rung (direct answer AND the quick samples) but never think.  Used
     # by the probe, so that "sure" means what it means in the ladder, and by the cheap_only
     # policy, so that production answers exactly the way the probe measured.
@@ -253,7 +258,7 @@ class Annotator:
         if prediction.source == "score":
             plausible = prediction.meta.get("plausible", [])
             return len(plausible) == 1 and self.trust_scores
-        if prediction.source == "generate":
+        if prediction.source in {"generate", "decompose"}:
             return prediction.confidence >= self.config.agree_share
         return prediction.source in {"program", "memory"}
 
@@ -267,10 +272,66 @@ class Annotator:
         session = self.memory.session() if self.memory is not None else ()
         if self.spec.kind == "code":
             return self._codegen(query, session)
+        if (
+            self.config.use_decompose
+            and not self.config.reason_first
+            and self.spec.decompose is not None
+            and self.spec.recompose is not None
+        ):
+            listed = self._decompose(query, session)
+            if listed is not None:
+                return listed
         prompt = self.builder.build(query, session)
         if self.spec.kind == "classification":
             return self._classify(query, prompt)
         return self._free_form(query, prompt)
+
+    def _decompose(self, query: Query, session: tuple) -> Prediction | None:
+        """List the evidence, let code compute the answer, vote over samples.
+
+        Returns None when the rung does not apply or nothing readable came back, so the
+        normal ladder takes over.  If the server rejects the format constraint, the same
+        request is sent once without it: a broken constraint must cost a retry, not the
+        input (a rejected request would otherwise fall straight to the model-free answer).
+        """
+        assert self.spec.decompose is not None and self.spec.recompose is not None
+        plan = self.spec.decompose(query.input)
+        if plan is None:
+            return None
+        instruction, pattern = plan
+        prompt = self.builder.build(query, session, suffix=instruction)
+        cfg = self.config
+
+        def ask(constraint: Regex | None) -> list[str]:
+            request = GenRequest.from_messages(
+                prompt.messages,
+                max_tokens=96,
+                temperature=cfg.decompose_temperature,
+                top_p=0.95,
+                top_k=20,
+                n=cfg.decompose_samples,
+                seed=cfg.seed,
+                thinking=False,
+                constraint=constraint,
+                tag="decompose",
+            )
+            return self.backend.generate(request).texts
+
+        try:
+            replies = ask(Regex(pattern))
+        except BadRequestError as err:
+            log.warning("decompose constraint rejected (%s); retrying without it", err)
+            replies = ask(None)
+        recompose = self.spec.recompose
+        vote = majority_vote(replies, lambda r: self._clean_value(recompose(r)))
+        if vote.answer is None:
+            return None
+        meta = self._meta(prompt)
+        meta.update(votes=vote.counts, lists=[r[:160] for r in replies[:3]])
+        return Prediction(query.id, vote.answer, vote.share, "decompose", meta)
+
+    def _clean_value(self, answer: str | None) -> str | None:
+        return answer if answer is not None and self._valid(answer) else None
 
     def _classify(self, query: Query, prompt: BuiltPrompt) -> Prediction:
         cfg, labels = self.config, self.spec.labels

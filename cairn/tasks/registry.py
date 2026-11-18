@@ -21,6 +21,7 @@ from cairn.decoding.parse import (
     trivia_key,
 )
 from cairn.tasks.base import TaskSpec, View
+from cairn.tasks.counting import COUNTING_RULES, count_from_list, list_instruction
 from cairn.tasks.signals import sentence_pair_overlap
 
 _T2 = re.compile(r"^Sentence: '(.*)'\. Count the number of (nouns|verbs) in this sentence\.$", re.S)
@@ -86,6 +87,9 @@ TASKS: dict[int, TaskSpec] = {
         normalize=norm_integer,
         answer_rule="Reply with a single digit and nothing else.",
         max_answer_tokens=4,
+        guidelines=COUNTING_RULES,
+        decompose=list_instruction,
+        recompose=count_from_list,
     ),
     3: TaskSpec(
         task_id=3,
