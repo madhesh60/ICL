@@ -74,7 +74,12 @@ tasks:
   # system prompt (task card), and the first rung LISTS the words in a constrained format
   # while code counts them.  The probe compares that rung with thinking at a budget that
   # can finish (1536 tokens).
-  2: { workers: 3, strategy: { use_scoring: false, think_max_tokens: 1536 } }
+  # E003: listing scored 13/40 in the probe; 12/60 dev inputs had no usable thinking vote.
+  # Evaluate position masks as the cheap arm and as recovery after an empty thinking vote.
+  2:
+    workers: 3
+    context: { structural_neighbors: true, tail_per_label: 0 }
+    strategy: { use_scoring: false, use_word_mask: true, think_max_tokens: 1536 }
   # Tweet sadness and same-genre: one-token scoring with stacked calibration is the cheap
   # rung (E001: 85% and 96% on what it answered).  Escalation looked harmful in both runs
   # (task 5: 1 of 5 in E000; task 6: the 4 escalated inputs had 3 right before thinking and
@@ -86,6 +91,8 @@ tasks:
   # cheap 20% on the same 40 inputs (9 vs 2 disagreements, p = 0.065).  The probe now tests
   # the overall difference first, so it can act on that.
   7:
+    workers: 3
+    strategy: { escalation_probe: 80, use_clue_expansion: true }  # fixed before the next run
     context: { n_clusters: 4, tail_k: 16 }      # trivia: topic-specific examples help the tail
   # Kernels.  Measure on the TEST inputs (`--split test --limit 24`): the 184 demonstration
   # kernels have no wrapper signature, so dev inputs can never be executed (E001: 24/24 not_run).

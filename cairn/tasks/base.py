@@ -69,3 +69,5 @@ class TaskSpec:
     #   recompose(reply) -> the answer, or None when the reply cannot be read
     decompose: Callable[[str], tuple[str, str] | None] | None = None
     recompose: Callable[[str], str | None] | None = None
+    word_mask: Callable[[str], tuple[str, str] | None] | None = None
+    structure_features: Callable[[str], list[str]] | None = None
