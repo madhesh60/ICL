@@ -4,13 +4,18 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$(pwd -P)
 export PYTHONUNBUFFERED=1
-OUT=/kaggle/working/cairn-e004
+mode=${1:-compare}
+case "$mode" in
+  compare) OUT=/kaggle/working/cairn-e004 ;;
+  finals) OUT=/kaggle/working/cairn-finals ;;
+  *) echo "Usage: bash scripts/kaggle_e004.sh [compare|finals]" >&2; exit 2 ;;
+esac
 mkdir -p "$OUT"
 exec > >(tee -a "$OUT/run.log") 2>&1
 
 # Tie resumable responses to the packaged source, config, official data and baseline.
 sha256sum --check --quiet e004-files.sha256
-if [[ -e "$OUT/e004-files.sha256" ]]; then
+if [[ -e "$OUT/e004-files.sha256" ]] && compgen -G "$OUT/task*" >/dev/null; then
   cmp e004-files.sha256 "$OUT/e004-files.sha256"
 elif [[ -e "$OUT/task2" || -e "$OUT/task7" || -e "$OUT/task8" ]]; then
   echo "Existing task output has no snapshot identity. Use a fresh notebook session." >&2
@@ -51,10 +56,9 @@ if [[ ! -d "$FRAMEWORK/.git" ]]; then
 fi
 [[ $(git -C "$FRAMEWORK" rev-parse HEAD) == "$FS_REV" ]]
 printf 'FlagScale %s\nQwen/Qwen3-4B %s\n' "$FS_REV" "$MODEL_REV" | tee "$OUT/revisions.txt"
-if [[ ! -x "$RUNTIME/venv/bin/python" ]]; then
-  python -m venv "$RUNTIME/venv"
-fi
-source "$RUNTIME/venv/bin/activate"
+# Install through the Kaggle image's working pip, as in E003. A failed
+# ensurepip bootstrap may have left an incomplete venv in the runtime directory.
+python -m pip --version
 export PYTHONPATH="$ROOT:$FRAMEWORK"
 python -m pip install --disable-pip-version-check --no-cache-dir -q \
   'vllm==0.12.0' 'transformers==4.57.3' 'omegaconf==2.3.0' tiktoken aiohttp tqdm pyyaml requests
@@ -135,6 +139,34 @@ fi
 
 cli=(python -m cairn.cli --config configs/default.yaml -v)
 "${cli[@]}" doctor
+if [[ "$mode" == finals ]]; then
+  for task in {1..7}; do
+    "${cli[@]}" run --task "$task" --split dev --limit 60 --run-dir "$OUT"
+    "${cli[@]}" run --task "$task" --split test --run-dir "$OUT"
+  done
+  "${cli[@]}" run --task 8 --split test --workers 1 --run-dir "$OUT"
+  stop_server
+  "${cli[@]}" submit --run-dir "$OUT" --out "$OUT/submission.tmp.zip"
+  mv "$OUT/submission.tmp.zip" "$OUT/submission.zip"
+  "${cli[@]}" replay-kernels "$OUT/task8/openseek-8.jsonl" --execute > "$OUT/task8/replay.tmp"
+  mv "$OUT/task8/replay.tmp" "$OUT/task8/replay.json"
+  python - "$OUT" <<'PY'
+import json
+import sys
+from pathlib import Path
+out = Path(sys.argv[1])
+correct = total = 0
+for task in range(1, 8):
+    score = json.loads((out / f"task{task}/dev.report.json").read_text())["eval"]
+    correct += score["correct"]
+    total += score["n"]
+    print(f"Task {task} dev accuracy: {score['correct']}/{score['n']} ({score['accuracy']:.1%})")
+print(f"Tasks 1-7 dev accuracy: {correct}/{total} ({correct / total:.1%})")
+print("Task 8 local GPU replay:", json.loads((out / "task8/replay.json").read_text())["summary"])
+print("Validated finals archive:", out / "submission.zip")
+PY
+  exit 0
+fi
 for task in 2 7; do
   "${cli[@]}" run --task "$task" --split dev --limit 60 --run-dir "$OUT"
 done
