@@ -7,7 +7,8 @@ export PYTHONUNBUFFERED=1
 mode=${1:-compare}
 case "$mode" in
   compare) OUT=/kaggle/working/cairn-e004 ;;
-  finals) OUT=/kaggle/working/cairn-finals ;;
+  finals) exec python -u scripts/kaggle_finals.py ;;
+  finals-worker) OUT=/kaggle/working/cairn-finals ;;
   *) echo "Usage: bash scripts/kaggle_e004.sh [compare|finals]" >&2; exit 2 ;;
 esac
 mkdir -p "$OUT"
@@ -64,6 +65,12 @@ python -m pip install --disable-pip-version-check --no-cache-dir -q \
   'vllm==0.12.0' 'transformers==4.57.3' 'omegaconf==2.3.0' tiktoken aiohttp tqdm pyyaml requests
 python -m pip freeze > "$OUT/environment.txt"
 python scripts/compare_e003.py
+if [[ "$mode" == finals-worker ]]; then
+  python scripts/kaggle_finals.py plan > "$OUT/remaining.tsv"
+  if [[ ! -s "$OUT/remaining.tsv" ]]; then
+    exec python scripts/kaggle_finals.py finish
+  fi
+fi
 python - <<'PY'
 import socket
 import torch
@@ -139,33 +146,15 @@ fi
 
 cli=(python -m cairn.cli --config configs/default.yaml -v)
 "${cli[@]}" doctor
-if [[ "$mode" == finals ]]; then
-  for task in {1..7}; do
-    "${cli[@]}" run --task "$task" --split dev --limit 60 --run-dir "$OUT"
-    "${cli[@]}" run --task "$task" --split test --run-dir "$OUT"
-  done
-  "${cli[@]}" run --task 8 --split test --workers 1 --run-dir "$OUT"
+if [[ "$mode" == finals-worker ]]; then
+  while read -r task split; do
+    options=()
+    if [[ "$split" == dev ]]; then options+=(--limit 60); fi
+    if [[ "$task" == 8 ]]; then options+=(--workers 1); fi
+    "${cli[@]}" run --task "$task" --split "$split" --run-dir "$OUT" "${options[@]}" </dev/null
+  done < "$OUT/remaining.tsv"
   stop_server
-  "${cli[@]}" submit --run-dir "$OUT" --out "$OUT/submission.tmp.zip"
-  mv "$OUT/submission.tmp.zip" "$OUT/submission.zip"
-  "${cli[@]}" replay-kernels "$OUT/task8/openseek-8.jsonl" --execute > "$OUT/task8/replay.tmp"
-  mv "$OUT/task8/replay.tmp" "$OUT/task8/replay.json"
-  python - "$OUT" <<'PY'
-import json
-import sys
-from pathlib import Path
-out = Path(sys.argv[1])
-correct = total = 0
-for task in range(1, 8):
-    score = json.loads((out / f"task{task}/dev.report.json").read_text())["eval"]
-    correct += score["correct"]
-    total += score["n"]
-    print(f"Task {task} dev accuracy: {score['correct']}/{score['n']} ({score['accuracy']:.1%})")
-print(f"Tasks 1-7 dev accuracy: {correct}/{total} ({correct / total:.1%})")
-print("Task 8 local GPU replay:", json.loads((out / "task8/replay.json").read_text())["summary"])
-print("Validated finals archive:", out / "submission.zip")
-PY
-  exit 0
+  exec python scripts/kaggle_finals.py finish
 fi
 for task in 2 7; do
   "${cli[@]}" run --task "$task" --split dev --limit 60 --run-dir "$OUT"
