@@ -1,3 +1,4 @@
+import hashlib
 import json
 import shutil
 import subprocess
@@ -11,6 +12,40 @@ from cairn.pipeline.journal import Journal
 from cairn.submit import write_task_file
 from cairn.types import Prediction
 from scripts import kaggle_finals as finals
+
+
+def test_policy_migration_requeues_only_sadness_and_preserves_raw_replies(tmp_path, monkeypatch):
+    from cairn.config import load_config
+
+    cfg = load_config(finals.ROOT / "configs/default.yaml").for_task(5).strategy
+    assert cfg.use_scoring and not cfg.escalate and cfg.escalation_probe == 0
+    mounted = tmp_path / "inputs" / "prior" / "cairn-finals"
+    mounted.mkdir(parents=True)
+    old = b"old snapshot"
+    (mounted / finals.MARKER).write_bytes(old)
+    monkeypatch.setattr(finals, "PREVIOUS_FINALS", {hashlib.sha256(old).hexdigest()})
+    stale = [
+        "task5/dev.report.json",
+        "task5/dev.journal.jsonl",
+        "task5/dev.journal.meta.json",
+        "task5/test.report.json",
+        "task5/openseek-5.jsonl",
+        "submission.zip",
+        "task8/replay.json",
+    ]
+    keep = ["task5/responses.sqlite", "task7/dev.journal.jsonl", "task8/replay-cases/a.json"]
+    for name in stale + keep:
+        path = mounted / name
+        path.parent.mkdir(exist_ok=True, parents=True)
+        path.write_bytes(name.encode())
+    out = tmp_path / "working" / "cairn-finals"
+    finals.restore(out, tmp_path / "inputs", b"new snapshot")
+    assert all(not (out / name).exists() for name in stale)
+    assert all((out / "prior-task5-policy" / name).read_bytes() == name.encode() for name in stale)
+    assert all((out / name).read_bytes() == name.encode() for name in keep)
+    (out / stale[0]).write_text("new result")
+    finals.restore(out, tmp_path / "inputs", b"new snapshot")
+    assert (out / stale[0]).read_text() == "new result"
 
 
 def test_restore_then_resume_interrupted_journal(tmp_path):

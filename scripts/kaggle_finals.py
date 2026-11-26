@@ -14,8 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path("/kaggle/working/cairn-finals")
 MARKER = "e004-files.sha256"
-# 84ce0cc used identical model, data, split and annotation settings.
-PREVIOUS_FINALS = "1f16a09b37f2b8ee995f4146e4c78c973928a3e96074c43d8a62da88482826ea"
+# Only the task 5 inference policy changed from these two published finals snapshots.
+PREVIOUS_FINALS = {
+    "1f16a09b37f2b8ee995f4146e4c78c973928a3e96074c43d8a62da88482826ea",
+    "c62f34ccf49388aa351918ba538b2af13c8c2714f0e7afc21a7cd91504846705",
+}
 E003 = {1: 60, 2: 41, 3: 60, 4: 60, 5: 51, 6: 58, 7: 10}
 
 
@@ -35,7 +38,7 @@ def restore(out, inputs, current):
         if not marker.is_file():
             return False
         data = marker.read_bytes()
-        return data == current or hashlib.sha256(data).hexdigest() == PREVIOUS_FINALS
+        return data == current or hashlib.sha256(data).hexdigest() in PREVIOUS_FINALS
 
     if out.exists() and any(out.iterdir()):
         if not compatible(out):
@@ -44,7 +47,9 @@ def restore(out, inputs, current):
         mounted = [p.parent for p in inputs.rglob(MARKER) if p.parent.name == "cairn-finals"]
         candidates = sorted(folder for folder in mounted if compatible(folder))
         if mounted and not candidates:
-            raise ValueError(f"Found finals outputs with incompatible snapshot identities: {mounted}")
+            raise ValueError(
+                f"Found finals outputs with incompatible snapshot identities: {mounted}"
+            )
         if len(candidates) > 1:
             raise ValueError(f"Attach only the most recent finals output. Found {candidates}")
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +62,25 @@ def restore(out, inputs, current):
         else:
             out.mkdir(exist_ok=True)
             print("Starting a new finals run. No compatible saved finals output was found.")
+    marker = out / MARKER
+    if marker.is_file() and marker.read_bytes() != current:
+        # Retain raw model replies by request hash. Old predictions and any final
+        # artifacts based on them must no longer count as finished under the new policy.
+        prior = out / "prior-task5-policy"
+        task = out / "task5"
+        affected = [
+            *task.glob("*.journal*"),
+            *task.glob("*.report.json"),
+            task / "openseek-5.jsonl",
+            out / "submission.zip",
+            out / "task8/replay.json",
+        ]
+        for source in affected:
+            if source.is_file():
+                dest = prior / source.relative_to(out)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                source.rename(dest)
+        print("Updated task 5 policy. Reusing matched model replies and other tasks' progress.")
     tmp = out / "snapshot.tmp"
     tmp.write_bytes(current)
     tmp.replace(out / MARKER)
