@@ -1,4 +1,4 @@
-# Strict profile: every answer comes out of the language model itself.
+# ICL comparison profile. The shared last-resort fallback policy still applies.
 #   - calibration only re-weighs the model's own label scores (no nearest-examples vote,
 #     no task signals)
 #   - no model-written programs are executed to produce answers
@@ -14,6 +14,7 @@ defaults:
   strategy:
     calibration: vector
     use_program: false
+    use_decompose: false
 
 tasks:
   7: { context: { n_clusters: 4, tail_k: 16 } }

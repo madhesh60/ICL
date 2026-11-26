@@ -55,8 +55,11 @@ Analysis: `docs/06_FIRST_REAL_RUN.md`.
 | E002 | 2026-11-17 | 6 | dev (60) | probe | ≥30K | **96.7%** (89..99) | score 100% | 2146 | probe: cheap 95% vs thinking 78% (8 vs 1, p = 0.039) → cheap_only |
 | E002 | 2026-11-17 | 7 | dev (60) | probe | ≥30K | 16.7% (9..28) | generate 98% | 2054 | probe: cheap 20% vs **thinking 38%** (9 vs 2 overall, p = 0.065); split groups lost the signal → cheap_only |
 | E002 | 2026-11-17 | 8 | dev (24) | old notebook cell ran dev | ≥16K | 0.000 | `not_run` 24/24 | 1289 | still not measured; CLI now redirects to test inputs |
-| E003 | planned | all | dev (60); task 8 on test inputs | counting rules + listing rung (task 2); probe tests overall difference first; task 2 thinking 1536 tokens; task 8 auto-redirect | ≥30K | predictions in `08_THIRD_RUN.md` §8 | | | any notebook cell works; `scripts/kaggle_run.sh` preferred |
-| E004 | planned | 2 | dev (100) | `vote_n` 3 vs 5 (paired), only if the probe picks thinking | ≥30K | | | | the cost lever for the most expensive task |
+| E003 | 2026-11-18 | 1–7 | dev (60 each) | Qwen3-4B at `7d1dddd` | ≥30K demo budget | 60, 41, 60, 60, 51, 58, 10 correct. Mean **80.95%** | Task 2 reasoning first, task 7 cheap only | 7,719 for task 2 | [ID-verified results and timings](09_FOURTH_RUN.md) |
+| E003 | 2026-11-18 | 8 | test (24) | GPU execution attempt | ≥16K | **0.000** consistency | 22 JIT source import failures, 2 static rejections | 1,949 | Console's static pass figure was incorrect |
+| E003 replay | 2026-11-24 | 8 | same 24 predictions | File-backed import, CPU interpreter, two reference trials | saved predictions | **0.1111** local consistency | 22 static passes, 6 callable, 4 PyTorch matches | — | [Replay by ID](results/e003_cpu_replay.json) |
+| Offline | 2026-11-24 | 2 | dev (300) | 12-neighbor weighted vote with lexical or structural retrieval | no generation | 150 versus 158 correct | 42 lexical-only wins, 50 structural-only wins, p = 0.466 | — | Qwen prompt ablation pending |
+| E004 | planned | 2, 7, 8 | dev (60) and kernel test (24) | Counting masks, structural retrieval, clue expansion, file-backed execution | official budgets | pending | paired controls | — | [Experiment matrix](09_FOURTH_RUN.md#next-measured-comparison) |
 | E005 | planned | 8 | test (24) | differential testing: model-written PyTorch reference for functions without a twin | ≥16K | | | | only after E002 shows how many kernels run at all |
 
 ## Decisions made from this log

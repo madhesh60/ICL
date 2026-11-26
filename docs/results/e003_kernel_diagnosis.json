@@ -1,0 +1,33 @@
+{
+  "source_commit": "7d1dddd",
+  "model": "Qwen3-4B",
+  "prediction_file_sha256": "8adc505734f703b804be8b209034fe33d5332bb297bfb6df685c05bdba32e75a",
+  "original_code_quality": {
+    "n": 24,
+    "static_ok": 0.0,
+    "callable": 0.0,
+    "matches_torch": 0.0,
+    "consistency": 0.0,
+    "statuses": {
+      "import_error": 22,
+      "not_run": 2
+    }
+  },
+  "first_issue_by_status": [
+    {
+      "status": "import_error",
+      "count": 22,
+      "issue": "The code fails when executed: ValueError: @jit functions should be defined in a Python file"
+    },
+    {
+      "status": "not_run",
+      "count": 1,
+      "issue": "These names do not exist in triton.language: tl.current_program_id, tl.tanh."
+    },
+    {
+      "status": "not_run",
+      "count": 1,
+      "issue": "These names do not exist in triton.language: tl.round."
+    }
+  ]
+}

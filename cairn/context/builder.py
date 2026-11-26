@@ -31,7 +31,7 @@ import hashlib
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 import numpy as np
@@ -71,6 +71,7 @@ class ContextConfig:
     global_frac: float = 0.5
     # The per-input tail.
     tail_k: int = 12
+    structural_neighbors: bool = False
     tail_per_label: int = 2
     tail_mmr: float = 1.0  # 1.0 = pure relevance, lower = more variety
     tail_as_turns: bool = True
@@ -137,6 +138,11 @@ class ContextBuilder:
         self._views: list[View] = [spec.view(e.input) for e in self.pool]
         self._feats: list[list[str]] = [self._features(v) for v in self._views]
         self._bm25 = BM25Index(self._feats)
+        self._frame_index = (
+            BM25Index([spec.structure_features(v.text) for v in self._views])
+            if self.config.structural_neighbors and spec.structure_features
+            else None
+        )
         self._rendered: list[str] = [render.render_demo(spec, e) for e in self.pool]
         self._costs: list[int] = [counter.count(r) for r in self._rendered]
         self._strata: dict[str, np.ndarray] = {}
@@ -325,6 +331,8 @@ class ContextBuilder:
         """Pool indices of the k most similar examples, best first."""
         view = self.spec.view(text)
         mask = self._strata.get(view.stratum) if same_stratum else None
+        if self._frame_index is not None and self.spec.structure_features and view.stratum:
+            return self._frame_index.top_k(self.spec.structure_features(view.text), k, mask=mask)
         if mask is not None and int(mask.sum()) < k:
             mask = None  # too few examples in this group: search everywhere
         return self._bm25.top_k(self._features(view), k, mask=mask)
@@ -392,7 +400,15 @@ class ContextBuilder:
         )
         return clone
 
-    def build(self, query: Query, session: Sequence[Example] = (), suffix: str = "") -> BuiltPrompt:
+    def build(
+        self,
+        query: Query,
+        session: Sequence[Example] = (),
+        suffix: str = "",
+        *,
+        output_rule: str | None = None,
+        tail_query: str | None = None,
+    ) -> BuiltPrompt:
         """Assemble the prompt for one input.
 
         session  answers given earlier in this run (shown after the big block)
@@ -401,7 +417,7 @@ class ContextBuilder:
         """
         spec, cfg = self.spec, self.config
         cluster = self.route(query.input)
-        tail = self._tail(query.input)
+        tail = self._tail(tail_query or query.input)
         query_text = render.render_input(query.input) + suffix
 
         session_text = ""
@@ -411,9 +427,17 @@ class ContextBuilder:
             )
         session_tokens = self.counter.count(session_text) if session_text else 0
 
-        reminder = f"{spec.answer_rule}\n\n" if cfg.restate_rule else ""
+        rule = spec.answer_rule if output_rule is None else output_rule
+        system = (
+            self._system
+            if output_rule is None
+            else render.system_prompt(
+                replace(spec, answer_rule=rule), self.definition, self.guidelines
+            )
+        )
+        reminder = f"{rule}\n\n" if cfg.restate_rule else ""
         head = self._bulk_text[cluster] + session_text
-        messages: list[dict[str, str]] = [{"role": "system", "content": self._system}]
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         if cfg.tail_as_turns:
             # The nearest examples become real question/answer turns of the chat.
             # The model then sees "its own" earlier answers in exactly the format
@@ -455,6 +479,11 @@ class ContextBuilder:
             n_session=len(session),
             n_tail=len(tail),
             prompt_tokens=self._overhead
+            + (
+                self.counter.count(system) - self.counter.count(self._system)
+                if output_rule is not None
+                else 0
+            )
             + bulk_tokens
             + session_tokens
             + tail_tokens
@@ -463,7 +492,9 @@ class ContextBuilder:
             + self.counter.count(reminder),
             min_required=self.min_required,
         )
-        prefix_key = hashlib.sha256(f"{spec.task_id}:{cluster}:{head}".encode()).hexdigest()[:16]
+        prefix_key = hashlib.sha256(
+            f"{spec.task_id}:{cluster}:{system}:{head}".encode()
+        ).hexdigest()[:16]
         return BuiltPrompt(
             messages=messages,
             stats=stats,

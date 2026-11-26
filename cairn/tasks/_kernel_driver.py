@@ -1,7 +1,7 @@
 """Runs ONE generated Triton module in a throw-away process and reports what happened.
 
 This file is executed as a script by `kernel_exec.py`; it must not import cairn.
-Input (JSON on stdin):  {"code", "name", "full_name", "params", "interpret"}
+Input (JSON on stdin):  {"source", "name", "full_name", "params", "interpret"}
 Output (JSON on stdout): {"status", "detail", ...}
 
 Statuses
@@ -21,6 +21,7 @@ result is the expected output.  The generated wrapper is then called with
 exactly those arguments.
 """
 
+import importlib.util
 import io
 import itertools
 import json
@@ -53,13 +54,17 @@ except Exception as err:
 torch.manual_seed(0)
 DEVICE = "cuda" if (torch.cuda.is_available() and not job.get("interpret")) else "cpu"
 
-namespace = {"__name__": "candidate"}
 try:
-    exec(compile(job["code"], "<candidate>", "exec"), namespace)
+    spec = importlib.util.spec_from_file_location("candidate", job["source"])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
 except BaseException as err:
     finish("import_error", f"{type(err).__name__}: {err}\n{traceback.format_exc(limit=3)}")
 
-wrapper = namespace.get(job["name"]) or namespace.get(job["full_name"].replace(".", "_"))
+wrapper = getattr(module, job["name"], None) or getattr(
+    module, job["full_name"].replace(".", "_"), None
+)
 if not callable(wrapper):
     finish("call_error", f"no callable named {job['name']} is defined")
 
@@ -187,6 +192,7 @@ def compare(got, expected):
 
 reference = find_reference(job["full_name"])
 tried = 0
+matched = 0
 last_error = ""
 for args, kwargs, note in argument_guesses(job["params"]):
     tried += 1
@@ -207,7 +213,10 @@ for args, kwargs, note in argument_guesses(job["params"]):
         problem = compare(got, expected)
         if problem:
             finish("wrong_result", f"with {note}: {problem}", inputs=note)
-        finish("exec_ok", f"matches torch for {note}", inputs=note)
+        matched += 1
+        if matched >= 2:
+            finish("exec_ok", f"matches torch on {matched} input trials", inputs=note)
+        continue
     outputs = as_list(got)
     if not outputs or not all(isinstance(o, torch.Tensor) for o in outputs):
         finish("call_error", f"with {note}: the wrapper did not return a Tensor", inputs=note)
@@ -215,6 +224,8 @@ for args, kwargs, note in argument_guesses(job["params"]):
         finish("wrong_result", f"with {note}: the output contains NaN or infinity", inputs=note)
     finish("called_no_reference", f"ran with {note}", inputs=note)
 
+if matched:
+    finish("insufficient_trials", "only one valid input trial matched the reference")
 if last_error:
     # Every guess raised and there is no PyTorch twin to tell us whether the guesses
     # or the wrapper are at fault.  Report it as a hint, not as a verdict.

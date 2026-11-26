@@ -227,3 +227,40 @@ def test_code_task_on_dev_is_measured_on_test_inputs(tmp_path, capsys):
     assert "measuring on the first 2 TEST inputs" in capsys.readouterr().out
     report = json.loads((run_dir / "task8" / "dev.report.json").read_text())
     assert report["measured_on"] == "test" and report["code_quality"]["n"] == 2
+
+
+def test_dev_audit_rejects_wrong_scores_and_duplicate_ids(tmp_path, monkeypatch):
+    import json
+
+    import pytest
+
+    from cairn.data import TaskData
+    from cairn.eval import audit
+    from cairn.types import Example, Prediction
+
+    data = TaskData(1, "small", "", (Example("q", "input", "label"),), ())
+    monkeypatch.setattr(audit, "load_task", lambda *_: data)
+    row = json.dumps(Prediction("q", "label").to_json())
+    for i in range(1, 8):
+        folder = tmp_path / f"task{i}"
+        folder.mkdir()
+        report = {
+            "task": i,
+            "split": "dev",
+            "n": 1,
+            "config": {
+                "split_seed": 42,
+                "splits": {"calib": 0, "dev": 1, "holdout": 0, "max_reserved_frac": 1.0},
+            },
+            "eval": {"correct": 1, "n": 1, "accuracy": 1.0},
+        }
+        (folder / "dev.report.json").write_text(json.dumps(report), encoding="utf-8")
+        (folder / "dev.journal.jsonl").write_text(row, encoding="utf-8")
+    assert audit.audit_dev(tmp_path)["correct"] == 7
+    journal = folder / "dev.journal.jsonl"
+    journal.write_text(row + "\n" + row, encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate"):
+        audit.audit_dev(tmp_path)
+    journal.write_text(json.dumps(Prediction("q", "bad").to_json()), encoding="utf-8")
+    with pytest.raises(ValueError, match="disagrees"):
+        audit.audit_dev(tmp_path)

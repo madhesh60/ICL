@@ -6,6 +6,9 @@
 > **Update 2026-11-16:** this describes the repository *before* Cairn was added. The new
 > solution lives in `cairn/` (see the root `README.md`); `AGENTS.md` now holds the challenge
 > text; the baseline's format losses were re-measured in `docs/results/offline_benchmarks.md`.
+>
+> The November 24 report traces the original design through four Qwen runs and identifies the modules
+> responsible for counting, clue retrieval and kernel evaluation. [Project history](09_FOURTH_RUN.md)
 
 ---
 

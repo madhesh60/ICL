@@ -1,5 +1,14 @@
 # 03 — Research Notebook (thinking space)
 
+## November 24, 2026 · Decisions after E003
+
+- **Counting.** The previous forecast anticipated 65–85%. The result was 68.3%. The cheap listing policy scored 13/40 in calibration. Five-sample reasoning still left 12/60 dev inputs without a usable vote. Test a word-aligned binary mask, validate every position and record the number of usable samples before trusting agreement.
+- **Context selection.** Counts can depend on sentence structure even when captions describe different objects. A structure-based pool index raised the weighted-neighbor baseline from 150 to 158 correct out of 300. The paired p-value was 0.466. Keep the lexical control for the model experiment.
+- **Trivia.** Changing the tie-breaker could recover at most three recorded errors. A calibration-only prototype replaced four of sixteen lexical neighbors with demonstrations whose answers occurred in retrieved clues. Both tails contained the gold answer on 18/300 queries. We parked that method. The implemented experiment uses Qwen to describe the clue's relationship before retrieving examples.
+- **Code generation.** All 22 observed import errors named the file requirement of Triton's JIT. Replaying identical predictions let us test the executor independently of sampling. Four wrappers now match numeric references in the CPU interpreter. Preserve raw errors and report static, call and numerical checks separately.
+
+[Complete run history, comparison protocol and sources](09_FOURTH_RUN.md)
+
 > This is the scratchpad. Write hypotheses, half-ideas, rejected ideas, and results here.
 > Nothing in this file needs to be polished. Promote decisions to `02_PLAN.md`; promote numbers to `04_EXPERIMENT_LOG.md`.
 > Convention: `H#` = hypothesis, `I#` = idea, `Q#` = open question, `R#` = result, `X#` = rejected.

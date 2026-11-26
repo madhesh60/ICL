@@ -28,6 +28,9 @@ cairn = "cairn.cli:main"
 [tool.setuptools.packages.find]
 include = ["cairn*"]
 
+[tool.setuptools.package-data]
+"cairn.tasks" = ["triton_api.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

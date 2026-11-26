@@ -157,9 +157,12 @@ def cmd_baseline(args: argparse.Namespace, app: AppConfig) -> int:
         splits = split_examples(task.examples, run_cfg.splits, run_cfg.split_seed)
         spec = get_task(task_id, tuple(e.output for e in splits.pool))
         dev = splits.as_queries("dev")
-        builder = ContextBuilder(
-            spec, splits.pool, counter, run_cfg.context, definition=task.definition
-        )
+        context = run_cfg.context
+        if args.neighbors is not None:
+            context = replace(context, structural_neighbors=args.neighbors == "structural")
+            if context.structural_neighbors and spec.structure_features is None:
+                raise ValueError(f"task {task_id} has no structural retrieval features")
+        builder = ContextBuilder(spec, splits.pool, counter, context, definition=task.definition)
         label, majority = majority_accuracy(splits.pool, dev)
         shown = label if len(label) <= 12 else label[:12] + "..."
         print(
@@ -432,6 +435,32 @@ def cmd_submit(args: argparse.Namespace, app: AppConfig) -> int:
     return 0
 
 
+def cmd_replay_kernels(args: argparse.Namespace, app: AppConfig) -> int:
+    from cairn.eval.replay import replay_kernels
+
+    try:
+        report = replay_kernels(
+            Path(args.predictions), load_task(8, args.data_dir), execute=args.execute
+        )
+    except (OSError, ValueError) as err:
+        print(err, file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, ensure_ascii=True))
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace, app: AppConfig) -> int:
+    from cairn.eval.audit import audit_dev
+
+    try:
+        report = audit_dev(Path(args.run_dir), args.data_dir)
+    except (OSError, ValueError, KeyError, TypeError) as err:
+        print(err, file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 # ----------------------------------------------------------------------- main
 
 
@@ -466,6 +495,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = add("baseline", cmd_baseline, "model-free reference scores on the dev split")
     p.add_argument("--task", default="all")
     p.add_argument("-k", type=int, default=15)
+    p.add_argument(
+        "--neighbors",
+        choices=["lexical", "structural"],
+        help="override the configured retrieval method",
+    )
 
     add("doctor", cmd_doctor, "check which features the model server supports")
 
@@ -486,6 +520,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=160)
     p.add_argument("--start", type=int, default=40)
     p.add_argument("--run-dir", default="runs/tune")
+
+    p = add(
+        "replay-kernels", cmd_replay_kernels, "check saved task-8 kernels without a model server"
+    )
+    p.add_argument("predictions", help="official-format openseek-8.jsonl (a subset is allowed)")
+    p.add_argument("--execute", action="store_true", help="also run the kernels in child processes")
+
+    p = add(
+        "audit-dev",
+        cmd_audit,
+        "rescore saved journals for tasks 1-7 against the official development IDs",
+    )
+    p.add_argument("--run-dir", required=True)
 
     p = add("submit", cmd_submit, "validate and zip the eight prediction files")
     p.add_argument("--run-dir", default="runs/default")

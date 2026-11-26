@@ -20,6 +20,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -32,7 +33,7 @@ _DRIVER = Path(__file__).with_name("_kernel_driver.py")
 # Statuses that prove something, as opposed to "we could not find out".
 PROVEN_GOOD = {"exec_ok"}
 PROVEN_BAD = {"wrong_result", "call_error", "import_error"}
-CALLABLE = {"exec_ok", "wrong_result", "called_no_reference"}
+CALLABLE = {"exec_ok", "wrong_result", "called_no_reference", "insufficient_trials"}
 
 
 @dataclass(frozen=True)
@@ -75,20 +76,25 @@ def execute_kernel(
     if interpret is None:
         interpret = os.environ.get("CAIRN_TRITON_INTERPRET", "1") != "0"
     job = {
-        "code": code,
         "name": signature.py_name,
         "full_name": signature.full_name,
         "params": [asdict(p) for p in signature.params],
         "interpret": interpret,
     }
     try:
-        done = subprocess.run(
-            [python_exe, str(_DRIVER)],
-            input=json.dumps(job),
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
+        # Triton reads @jit function source during import and again during compilation.
+        # The parent owns the directory so even a crashed or timed-out child is cleaned up.
+        with tempfile.TemporaryDirectory(prefix="cairn-kernel-") as directory:
+            source = Path(directory) / "candidate.py"
+            source.write_text(code, encoding="utf-8")
+            done = subprocess.run(
+                [python_exe, str(_DRIVER)],
+                input=json.dumps({**job, "source": str(source.resolve())}),
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_s,
+            )
     except subprocess.TimeoutExpired:
         return ExecReport("timeout", f"no result after {timeout_s:.0f}s")
     except OSError as err:
@@ -120,7 +126,7 @@ def consistency_score(n_called: int, n_correct: int, n_total: int) -> float:
     return s_exec * (1.0 - (s_call - s_exec) / s_call)
 
 
-def code_quality(predictions: Sequence[Prediction]) -> dict[str, float]:
+def code_quality(predictions: Sequence[Prediction]) -> dict[str, object]:
     """Summarise a batch of code answers from the stages they reached.
 
     `callable` counts kernels that ran and returned tensors (right or wrong);
@@ -130,7 +136,17 @@ def code_quality(predictions: Sequence[Prediction]) -> dict[str, float]:
     """
     n = len(predictions)
     statuses = [str(p.meta.get("exec_status", "")) or "none" for p in predictions]
-    static_ok = sum(1 for p in predictions if int(p.meta.get("tier", 0)) >= 2)
+    # In older journals a runtime error demoted a statically clean candidate to tier 1.
+    # Reconstruct the separate stage from the fact that execution was attempted.
+    static_ok = sum(
+        bool(
+            p.meta.get(
+                "static_ok",
+                int(p.meta.get("tier", 0)) >= 2 or status not in {"none", "not_run", "abstained"},
+            )
+        )
+        for p, status in zip(predictions, statuses, strict=True)
+    )
     called = sum(1 for s in statuses if s in CALLABLE)
     correct = sum(1 for s in statuses if s in PROVEN_GOOD)
     histogram: dict[str, int] = {}

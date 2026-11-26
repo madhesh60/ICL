@@ -90,6 +90,8 @@ class StrategyConfig:
     # Decomposition rung (tasks whose card defines it): the model lists the evidence in a
     # constrained format, code computes the answer, several samples vote.
     use_decompose: bool = True
+    use_word_mask: bool = False
+    use_clue_expansion: bool = False
     decompose_samples: int = 5
     decompose_temperature: float = 0.6
     # Run the whole cheap rung (direct answer AND the quick samples) but never think.  Used
@@ -131,6 +133,7 @@ class _Candidate:
     static_score: float
     feedback: list[str]
     exec_status: str
+    static_ok: bool = True
 
 
 # How far a code candidate got.  Higher is better.
@@ -280,7 +283,27 @@ class Annotator:
         ):
             listed = self._decompose(query, session)
             if listed is not None:
-                return listed
+                if not self.config.escalate or self.is_sure(listed):
+                    return listed
+                # The probe can select a ladder. An uncertain decomposition must
+                # actually reach its measured expensive rung in production.
+                prompt = self.builder.build(query, session)
+                thought = self._think_vote(prompt)
+                if thought.answer is None:
+                    return listed
+                meta = {
+                    **self._meta(prompt),
+                    "votes": thought.counts,
+                    "cheap_votes": listed.meta["votes"],
+                    "valid_votes": thought.valid,
+                }
+                return Prediction(
+                    query.id,
+                    thought.answer,
+                    thought.share * thought.valid / self.config.vote_n,
+                    "think_vote",
+                    meta,
+                )
         prompt = self.builder.build(query, session)
         if self.spec.kind == "classification":
             return self._classify(query, prompt)
@@ -295,12 +318,19 @@ class Annotator:
         input (a rejected request would otherwise fall straight to the model-free answer).
         """
         assert self.spec.decompose is not None and self.spec.recompose is not None
-        plan = self.spec.decompose(query.input)
+        cfg = self.config
+        mask = self.spec.word_mask if cfg.use_word_mask else None
+        plan = (mask or self.spec.decompose)(query.input)
         if plan is None:
             return None
         instruction, pattern = plan
-        prompt = self.builder.build(query, session, suffix=instruction)
-        cfg = self.config
+        rule = (
+            "Return one binary digit per numbered word."
+            if mask
+            else "Return the requested list of words from the sentence."
+        )
+        prompt = self.builder.build(query, session, suffix=instruction, output_rule=rule)
+        grammar = Regex(pattern)
 
         def ask(constraint: Regex | None) -> list[str]:
             request = GenRequest.from_messages(
@@ -318,17 +348,28 @@ class Annotator:
             return self.backend.generate(request).texts
 
         try:
-            replies = ask(Regex(pattern))
+            replies = ask(grammar)
         except BadRequestError as err:
             log.warning("decompose constraint rejected (%s); retrying without it", err)
             replies = ask(None)
         recompose = self.spec.recompose
-        vote = majority_vote(replies, lambda r: self._clean_value(recompose(r)))
+
+        def decode(reply: str) -> str | None:
+            if mask:
+                bits = reply.strip()
+                return self._clean_value(str(bits.count("1"))) if satisfies(grammar, bits) else None
+            return self._clean_value(recompose(reply))
+
+        vote = majority_vote(replies, decode)
         if vote.answer is None:
             return None
         meta = self._meta(prompt)
-        meta.update(votes=vote.counts, lists=[r[:160] for r in replies[:3]])
-        return Prediction(query.id, vote.answer, vote.share, "decompose", meta)
+        meta.update(
+            votes=vote.counts, valid_votes=vote.valid, requested_votes=cfg.decompose_samples
+        )
+        meta["masks" if mask else "lists"] = [r[:160] for r in replies[:3]]
+        support = vote.counts[vote.answer] / cfg.decompose_samples
+        return Prediction(query.id, vote.answer, support, "decompose", meta)
 
     def _clean_value(self, answer: str | None) -> str | None:
         return answer if answer is not None and self._valid(answer) else None
@@ -363,6 +404,32 @@ class Annotator:
             return Prediction(query.id, labels[top], float(probs[top]), "score", meta)
         return Prediction(query.id, vote.answer, vote.share, "think_vote", meta)
 
+    def _clue_evidence(self, query: Query, prompt: BuiltPrompt) -> BuiltPrompt:
+        """Ask Qwen for search terms. Only official examples enter the new reasoning tail."""
+        session = self.memory.session() if self.memory else ()
+        cue_prompt = self.builder.build(
+            query,
+            session,
+            output_rule="Write up to twelve search words describing the expected answer type "
+            "and the relationship in this clue. Omit guessed answers.",
+        )
+        request = GenRequest.from_messages(
+            cue_prompt.messages,
+            max_tokens=32,
+            thinking=False,
+            seed=self.config.seed,
+            tag="clue_expansion",
+        )
+        try:
+            texts = self.backend.generate(request).texts
+        except BadRequestError:
+            return prompt
+        words = (texts[0] if texts else "").split()[:12]
+        if not words:
+            return prompt
+        # Route and render the original clue. The expansion affects only the nearest examples.
+        return self.builder.build(query, session, tail_query=query.input + " " + " ".join(words))
+
     def _free_form(self, query: Query, prompt: BuiltPrompt) -> Prediction:
         cfg = self.config
         meta = self._meta(prompt)
@@ -382,15 +449,34 @@ class Annotator:
             if vote.answer is not None and (not cfg.escalate or vote.share >= cfg.agree_share):
                 return Prediction(query.id, vote.answer, vote.share, "generate", meta)
         if cfg.escalate or reason_first:
+            if cfg.use_clue_expansion and self.spec.kind == "generation":
+                original_tail = set(prompt.tail_ids)
+                prompt = self._clue_evidence(query, prompt)
+                meta.update(
+                    self._meta(prompt), new_tail_examples=len(set(prompt.tail_ids) - original_tail)
+                )
             thought = self._think_vote(prompt)
+            meta.update(valid_think_votes=thought.valid, requested_think_votes=cfg.vote_n)
             # One count per reply, with the direct answers first so that they win ties.
             for answer, count in thought.counts.items():
                 replies.extend([answer] * int(count))
             vote = majority_vote(replies, lambda a: a, group_key=self.spec.vote_key)
             meta["votes"] = vote.counts
             if vote.answer is not None:
-                return Prediction(query.id, vote.answer, vote.share, "think_vote", meta)
+                # Missing answers carry no support. One valid reply among five
+                # should not populate session memory with confidence 1.0.
+                support = vote.share * vote.valid / (vote.valid + cfg.vote_n - thought.valid)
+                return Prediction(query.id, vote.answer, support, "think_vote", meta)
         if reason_first:
+            if cfg.use_decompose and cfg.use_word_mask and self.spec.word_mask:
+                recovered = self._decompose(query, self.memory.session() if self.memory else ())
+                if recovered is not None:
+                    recovered.meta.update(
+                        valid_think_votes=0,
+                        requested_think_votes=cfg.vote_n,
+                        recovered_after="think_vote",
+                    )
+                    return recovered
             direct = [a for a in self._direct(prompt) if a is not None]
             if direct:
                 return Prediction(query.id, direct[0], 0.5, "generate", meta)
@@ -404,11 +490,16 @@ class Annotator:
         static = static_check(code, signature)
         feedback = list(static.problems)
         if not static.ok:
-            return _Candidate(code, 1, static.score, feedback, "not_run")
+            return _Candidate(code, 1, static.score, feedback, "not_run", static_ok=False)
         report: ExecReport | None = None
         if self.config.codegen_execute and signature is not None:
             report = execute_kernel(code, signature)
-        if report is None or report.status in {"unavailable", "no_valid_inputs", "timeout"}:
+        if report is None or report.status in {
+            "unavailable",
+            "no_valid_inputs",
+            "timeout",
+            "insufficient_trials",
+        }:
             return _Candidate(
                 code, 2, static.score, feedback, report.status if report else "not_run"
             )
@@ -437,6 +528,7 @@ class Annotator:
         prompt = self.builder.build(query, session, suffix=pin)
         meta = self._meta(prompt)
         best: _Candidate | None = None
+        seen_code: set[str] = set()
         extra: tuple[tuple[str, str], ...] = ()
         rounds_used = 0
         for round_index in range(max(1, cfg.codegen_rounds)):
@@ -455,11 +547,13 @@ class Annotator:
             )
             for reply in self.backend.generate(request).texts:
                 code = extract_code(reply)
-                if not code:
+                if not code or code in seen_code:
                     continue
+                seen_code.add(code)
                 candidate = self._judge(code, signature)
-                if best is None or (candidate.tier, candidate.static_score) > (
+                if best is None or (candidate.tier, candidate.static_ok, candidate.static_score) > (
                     best.tier,
+                    best.static_ok,
                     best.static_score,
                 ):
                     best = candidate
@@ -484,6 +578,7 @@ class Annotator:
         meta.update(
             rounds=rounds_used,
             tier=best.tier,
+            static_ok=best.static_ok,
             exec_status=best.exec_status,
             open_issues=best.feedback,
         )
@@ -491,7 +586,9 @@ class Annotator:
             # Proven wrong after every repair round.  Handing it in would raise S_call
             # without raising S_exec, which lowers the score; a loud stub does neither.
             stub = self._fallback(query, "abstained: the best kernel was proven wrong")
-            stub.meta.update(meta, exec_status="abstained", abstained_code=best.code)
+            stub.meta.update(
+                meta, static_ok=False, exec_status="abstained", abstained_code=best.code
+            )
             stub.source = "abstain"
             return stub
         return Prediction(query.id, best.code, _TIER_CONFIDENCE[best.tier], "codegen", meta)

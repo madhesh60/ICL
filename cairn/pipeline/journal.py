@@ -29,6 +29,34 @@ class Journal:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        if self.path.is_file() and self.path.stat().st_size:
+            self._repair_tail()
+
+    def _repair_tail(self) -> None:
+        """Keep a complete final record or remove only the fragment left by a killed writer."""
+        with self.path.open("r+b") as handle:
+            handle.seek(-1, os.SEEK_END)
+            if handle.read(1) == b"\n":
+                return
+            end = handle.tell()
+            start = end
+            while start:
+                offset = max(0, start - 8192)
+                handle.seek(offset)
+                newline = handle.read(start - offset).rfind(b"\n")
+                start = offset
+                if newline >= 0:
+                    start += newline + 1
+                    break
+            handle.seek(start)
+            try:
+                Prediction.from_json(json.loads(handle.read()))
+            except (ValueError, KeyError, TypeError):
+                handle.truncate(start)
+            else:
+                handle.write(b"\n")
+            handle.flush()
+            os.fsync(handle.fileno())
 
     def load(self) -> dict[str, Prediction]:
         """Read all finished answers.  A later line for the same id wins."""

@@ -162,7 +162,7 @@ def test_code_quality_summary():
     ]
     quality = code_quality(predictions)
     assert (
-        quality["static_ok"] == 0.5
+        quality["static_ok"] == 0.75
         and quality["callable"] == 0.5
         and quality["matches_torch"] == 0.25
     )
@@ -183,6 +183,25 @@ def test_code_quality_explains_why_kernels_were_not_callable():
     quality = code_quality(predictions)
     assert quality["statuses"] == {"unconfirmed_error": 2, "unavailable": 1, "exec_ok": 1}
     assert quality["callable"] == 0.25
+
+
+def test_replay_checks_ids_and_does_not_execute_by_default(tmp_path):
+    import json
+
+    from cairn.data import TaskData
+    from cairn.eval.replay import replay_kernels
+    from cairn.types import Query
+
+    task = TaskData(8, "kernels", "", (), (Query("q1", DIV_SPEC),))
+    part = tmp_path / "part.jsonl"
+    row = json.dumps({"test_sample_id": "q1", "prediction": KERNEL.replace("OP", "/")})
+    part.write_text(row, encoding="utf-8")
+    r = replay_kernels(part, task)
+    assert r["summary"]["static_ok"] == 1 and r["summary"]["consistency"] is None
+    assert r["cases"]["q1"]["exec_status"] == "not_run"
+    part.write_text(row + "\n" + row, encoding="utf-8")
+    with pytest.raises(ValueError, match="line 2"):
+        replay_kernels(part, task, execute=True)
 
 
 def test_driver_guesses_triton_friendly_shapes_first():

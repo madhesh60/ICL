@@ -2,7 +2,7 @@
 # Cairn + Qwen3-4B on a Kaggle notebook with 2 x Tesla T4 (free tier).
 #
 # Paste this into ONE notebook cell starting with `%%bash`, or run `bash scripts/kaggle_run.sh`
-# after cloning.  Every stage is safe to re-run: the repo is re-cloned, the model download is
+# after cloning. The script reuses the local checkout when present, the model download is
 # skipped when present, model answers are cached on disk, and the run journal resumes where
 # it stopped.  To make a run survive the session, "Save Version" the notebook: only
 # /kaggle/working is kept.
@@ -24,7 +24,7 @@ REPO_URL="${REPO_URL:-https://github.com/madhesh60/ICL.git}"
 W="/kaggle/working"
 REPO="$W/cairn"
 MODEL_DIR="${MODEL_DIR:-/tmp/Qwen3-4B}"
-RUNS="$W/runs/$SPLIT"
+RUNS="${RUN_DIR:-$W/runs/$SPLIT}"
 PORT=2026
 
 set -Eeuo pipefail
@@ -62,16 +62,17 @@ echo "CUDA driver: $CUDA_DRIVER"
 
 # ------------------------------------------------------------------ 3. code
 say "3/7 GET PROJECT CODE ($BRANCH)"
-rm -rf "$REPO"
-git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
+if [[ -f cairn/cli.py && -f pyproject.toml ]]; then
+  REPO="$PWD"
+elif [[ ! -d "$REPO/.git" ]]; then
+  git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$REPO"
+fi
 cd "$REPO"
 git log --oneline -1
 
 # ------------------------------------------------------------------ 4. dependencies
 say "4/7 INSTALL DEPENDENCIES"
-if ! python -c "import vllm, cairn" >/dev/null 2>&1; then
-  pip install -q -e ".[dev]" "vllm==0.12.0"
-fi
+python -m pip install -q -e ".[dev]" "vllm==0.12.0"
 python -c "import vllm, cairn; print('vLLM', vllm.__version__, '| cairn import OK')"
 
 # ------------------------------------------------------------------ 5. model
@@ -120,16 +121,21 @@ cairn --config configs/default.yaml doctor
 # ------------------------------------------------------------------ 7. run
 say "7/7 RUN ($SPLIT, limit $LIMIT): tasks $TASKS"
 mkdir -p "$RUNS"
+failed_tasks=()
 for t in $TASKS; do
   echo; echo "------------------------------------------ task $t"
   if [ "$SPLIT" = "test" ]; then
-    cairn --config configs/default.yaml -v run --task "$t" --split test --run-dir "$RUNS" || echo "task $t FAILED; continuing"
+    cairn --config configs/default.yaml -v run --task "$t" --split test --run-dir "$RUNS" || failed_tasks+=("$t")
   elif [ "$t" = "8" ]; then
-    cairn --config configs/default.yaml -v run --task 8 --split test --limit "$LIMIT8" --run-dir "$RUNS" || echo "task 8 FAILED; continuing"
+    cairn --config configs/default.yaml -v run --task 8 --split test --limit "$LIMIT8" --run-dir "$RUNS" || failed_tasks+=("$t")
   else
-    cairn --config configs/default.yaml -v run --task "$t" --split "$SPLIT" --limit "$LIMIT" --run-dir "$RUNS" || echo "task $t FAILED; continuing"
+    cairn --config configs/default.yaml -v run --task "$t" --split "$SPLIT" --limit "$LIMIT" --run-dir "$RUNS" || failed_tasks+=("$t")
   fi
 done
+if (( ${#failed_tasks[@]} )); then
+  echo "Failed tasks: ${failed_tasks[*]}. Saved journals can be resumed." >&2
+  exit 1
+fi
 
 say "SUMMARY"
 python - "$RUNS" "$SPLIT" <<'PY'
@@ -163,6 +169,7 @@ for path in paths:
 print("\nreports:", root)
 PY
 if [ "$SPLIT" = "test" ]; then
-  cairn submit --run-dir "$RUNS" --out "$W/submission.zip" && echo "submission: $W/submission.zip"
+  cairn submit --run-dir "$RUNS" --out "$W/submission.zip"
+  echo "submission: $W/submission.zip"
 fi
 say "DONE"

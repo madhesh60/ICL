@@ -10,14 +10,15 @@ whether the cache-aligned prompt layout is paying off.
 from __future__ import annotations
 
 import threading
-from collections import defaultdict
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 
 from cairn.llm.base import GenRequest, GenResponse, LLMBackend
 
 
 @dataclass
 class TagStats:
+    finish_reasons: Counter[str] = field(default_factory=Counter)
     calls: int = 0
     cache_file_hits: int = 0  # answered from our own disk cache (no server work at all)
     prompt_tokens: int = 0
@@ -38,6 +39,7 @@ class UsageMeter:
         with self._lock:
             stats = self._stats[request.tag or "untagged"]
             stats.calls += 1
+            stats.finish_reasons.update(reason or "unknown" for reason in response.finish_reasons)
             if response.from_cache:
                 stats.cache_file_hits += 1
             else:
@@ -47,12 +49,13 @@ class UsageMeter:
                 stats.seconds += response.latency_s
         return response
 
-    def summary(self) -> dict[str, dict[str, float]]:
+    def summary(self) -> dict[str, dict[str, object]]:
         with self._lock:
             out: dict[str, dict[str, float]] = {}
             for tag, s in sorted(self._stats.items()):
                 out[tag] = {
                     "calls": s.calls,
+                    "finish_reasons": dict(sorted(s.finish_reasons.items())),
                     "cache_file_hits": s.cache_file_hits,
                     "prompt_tokens": s.prompt_tokens,
                     "cached_tokens": s.cached_tokens,

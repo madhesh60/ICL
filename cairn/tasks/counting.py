@@ -38,6 +38,58 @@ import re
 _T2 = re.compile(r"^Sentence: '(.*)'\. Count the number of (nouns|verbs) in this sentence\.$", re.S)
 _LIST = re.compile(r"(?:Nouns|Verbs)\s*:\s*(.*)", re.IGNORECASE)
 _WORD = r"[A-Za-z][A-Za-z'\-]*"
+_DETERMINERS = frozenset(["a", "an", "the", "some", "two", "three", "several", "many"])
+_AUXILIARIES = frozenset(["is", "are", "was", "were", "be", "been", "being"])
+_CONNECTORS = frozenset(
+    [
+        "and",
+        "or",
+        "with",
+        "of",
+        "on",
+        "in",
+        "by",
+        "at",
+        "near",
+        "over",
+        "next",
+        "to",
+        "from",
+        "into",
+        "under",
+        "as",
+        "that",
+        "while",
+        "through",
+        "against",
+        "for",
+        "around",
+    ]
+)
+
+
+def counting_frames(sentence: str) -> list[str]:
+    """Index short grammatical frames for finding examples with similar counting decisions."""
+    tags = []
+    for word in re.findall(r"[a-z]+", sentence.lower()):
+        if word in _DETERMINERS:
+            tag = "DET"
+        elif word in _AUXILIARIES:
+            tag = "AUX"
+        elif word in _CONNECTORS:
+            tag = word
+        else:
+            tag = next(
+                (
+                    s
+                    for s in ("ing", "ed", "ly", "s")
+                    if len(word) > len(s) + 1 and word.endswith(s)
+                ),
+                "WORD",
+            )
+        tags.append(tag)
+    return [" ".join(tags[i : i + n]) for n in (1, 2, 3) for i in range(len(tags) - n + 1)]
+
 
 COUNTING_RULES = """\
 - Nouns: count every noun word separately. Each word of a compound noun counts on its own: \
@@ -78,8 +130,10 @@ def count_from_list(reply: str) -> str | None:
     match = _LIST.search(reply)
     if not match:
         return None
-    body = match.group(1).strip().splitlines()[0].strip().rstrip(".")
-    if body.lower() in {"none", ""}:
+    body = match.group(1).strip().rstrip(".")
+    if not body:
+        return None
+    if body.lower() == "none":
         return "0"
     items = [item.strip() for item in body.split(",") if item.strip()]
     if not all(re.fullmatch(_WORD + r"(?: " + _WORD + r")*", item) for item in items):
@@ -87,3 +141,20 @@ def count_from_list(reply: str) -> str | None:
     # Words, not items: an unconstrained reply may write "tennis court" as one item, and
     # the labels count it as two nouns.
     return str(sum(len(item.split()) for item in items))
+
+
+def word_mask_instruction(text: str) -> tuple[str, str] | None:
+    """Bind every decision to one occurrence in the original caption."""
+    match = _T2.fullmatch(text)
+    if match is None:
+        return None
+    words = re.findall(r"[^\W_]+(?:['’-][^\W_]+)*", match[1])
+    if not 0 < len(words) <= 96:  # one digit per word fits the completion budget
+        return None
+    slots = " | ".join(f"{i} {word}" for i, word in enumerate(words, 1))
+    return (
+        f"\n\nMark the {match[2]} in these numbered word positions.\n{slots}\n"
+        f"Write exactly {len(words)} digits in order. Use 1 for each word that counts "
+        "and 0 for each other word. Return the digits together without spaces.",
+        rf"[01]{{{len(words)}}}",
+    )

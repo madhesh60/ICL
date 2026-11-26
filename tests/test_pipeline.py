@@ -622,6 +622,67 @@ def test_unreadable_lists_hand_over_to_the_normal_ladder(counter):
     assert (prediction.answer, prediction.source) == ("2", "generate")
 
 
+def test_empty_thinking_vote_recovers_with_exact_length_word_mask(counter):
+    spec, builder = _count_spec_builder(counter)
+    requests = []
+
+    def reply(request):
+        requests.append(request)
+        if request.thinking:
+            return [""] * request.n
+        if request.constraint is not None:
+            raise BadRequestError("no regex support")
+        return ["0100010001", "0100010001", "1", "01oops10001", ""]
+
+    # Ten word positions, including two separate occurrences of the article.
+    query = Query(
+        "q",
+        "Sentence: 'A man walking with a dog on the sandy beach'. Count the number of nouns in this sentence.",
+    )
+    cfg = StrategyConfig(use_scoring=False, reason_first=True, use_word_mask=True)
+    p = Annotator(spec, builder, FunctionBackend(reply), cfg).annotate(query)
+    assert p.source == "decompose" and p.answer == "3"
+    assert p.confidence == 2 / 5
+    assert p.meta["votes"] == {"3": 2.0} and p.meta["valid_think_votes"] == 0
+    assert [r.tag for r in requests] == ["think_vote", "decompose", "decompose"]
+    assert "single digit" not in requests[1].messages[0][1]
+
+
+def test_unsure_decomposition_reaches_measured_thinking_rung(counter):
+    spec, builder = _count_spec_builder(counter)
+    backend = FunctionBackend(
+        lambda r: (
+            ["Nouns: man", "Nouns: man, horse", "Nouns: beach", "", ""]
+            if r.tag == "decompose"
+            else ["3", "", "", "", ""]
+        )
+    )
+    p = Annotator(spec, builder, backend, StrategyConfig(use_scoring=False)).annotate(COUNT_Q)
+    assert p.source == "think_vote" and p.answer == "3" and p.confidence == 0.2
+
+
+def test_clue_expansion_changes_search_without_rewriting_the_question(counter):
+    runner = TaskRunner(
+        _trivia_task(),
+        FunctionBackend(
+            lambda r: ["river tributary"] if r.tag == "clue_expansion" else ["river"] * r.n
+        ),
+        counter,
+        RunConfig(context=CTX, strategy=StrategyConfig(reason_first=True, use_clue_expansion=True)),
+    )
+    q = runner.splits.as_queries("dev")[0]
+    runner.prepare([q])
+    pred = runner.run([q])[0]
+    assert runner.meter.summary()["clue_expansion"]["calls"] == 1
+    assert pred.answer == "river" and "new_tail_examples" in pred.meta
+    revised = runner.builder.build(q, tail_query=q.input + " river tributary")
+    assert (
+        q.input in revised.messages[-1]["content"]
+        and "river tributary" not in revised.messages[-1]["content"]
+    )
+    assert revised.prefix_key == runner.builder.build(q).prefix_key
+
+
 def test_probe_acts_on_an_overall_difference_that_each_group_alone_cannot_show(counter):
     """E002 task 7: thinking won 9-2 overall (p = 0.065) but no group alone was significant.
 

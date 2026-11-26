@@ -30,10 +30,22 @@ def test_instruction_names_the_kind_and_constrains_the_format():
         ("Nouns: tennis court, living room", "4"),  # words, not items (the label convention)
         ("Verbs: using, photograph.", "2"),
         ("I think there are 3", None),  # not a list: unreadable, the ladder takes over
+        ("Nouns:", None),
     ],
 )
 def test_count_from_list(reply, count):
     assert count_from_list(reply) == count
+
+
+def test_word_masks_bind_repeated_words_to_separate_slots():
+    from cairn.tasks.counting import counting_frames, word_mask_instruction
+
+    prompt, pattern = word_mask_instruction(
+        "Sentence: 'A dog sees a dog'. Count the number of nouns in this sentence."
+    )
+    assert "2 dog" in prompt and "5 dog" in prompt and re.fullmatch(pattern, "01001")
+    assert not re.fullmatch(pattern, "0101")
+    assert counting_frames("a boy is skiing") == counting_frames("the girl was jumping")
 
 
 @pytest.mark.data

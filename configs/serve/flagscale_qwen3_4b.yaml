@@ -9,7 +9,7 @@ serve:
 - serve_id: vllm_model
   engine: vllm
   engine_args:
-    model: ../Qwen3-4B
+    model: ${oc.env:MODEL_DIR,../Qwen3-4B}
     served_model_name: Qwen3-4B
     host: 0.0.0.0
     uvicorn_log_level: warning

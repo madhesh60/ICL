@@ -5,10 +5,14 @@
 ![context](https://img.shields.io/badge/context-%E2%89%A530K%20tokens%20of%20examples-0a7ea4)
 ![python](https://img.shields.io/badge/python-3.10%20%7C%203.12-3776ab)
 
-**Cairn makes a small language model label data reliably from thirty thousand tokens of worked examples.**
-It reads thousands of solved examples per task, builds a long prompt that helps a 4-billion-parameter model
-instead of drowning it, and uses the examples that do *not* fit in the prompt to check, correct and steer every
-answer. It does not claim a smarter model; it makes a small one dependable.
+**Cairn is an annotation engine for Qwen3-4B and the eight OpenSeek long-context tasks.**
+It selects demonstrations from the official example pool, uses held-out labels to decide when extra inference pays off,
+and checks generated Triton kernels against executable references where available.
+
+**Latest Qwen3-4B run, November 18, 2026.** Tasks 1–7 scored **340/420 (80.95%)** across 60 development
+inputs per task. Task 7 accounted for 50 of the 80 errors. On November 24, replaying the 24 saved task-8
+kernels with a repaired executor produced six callable kernels and four PyTorch matches. The official leaderboard
+score and a full eight-task FlagScale reproduction are pending. [Run analysis and reproduction commands](docs/09_FOURTH_RUN.md)
 
 **C**over · **A**rrange · **I**nduce · **R**oute · **N**ever-null — Qwen3-4B only, no training, no second model ·
 FlagOS Open Computing Global Challenge, Track 3: *LLM Automatic Data Annotation in Long-Context Scenarios* ·
@@ -20,6 +24,7 @@ Apache-2.0
 
 | | |
 |---|---|
+| **Latest experiment** | [Fourth run, CPU replay and design decisions](docs/09_FOURTH_RUN.md) |
 | **Learn the ideas** | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md): every technique explained with a picture, a real example and the reasoning behind it |
 | **First real run, diagnosed** | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md): how the result was validated, what was broken, what changed, and predictions for the next run |
 | **Third run: the probe corrects me** | [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md): tasks 1, 3, 4 solved; selection bias found in my own earlier conclusion; the counting convention measured from data |
@@ -80,9 +85,9 @@ the most valuable material in the project.
 
 ## What Cairn Builds
 
-Cairn takes the eight official task files and returns eight validated prediction files in the official
-submission format. Every prompt meets its token minimum, every answer has a valid shape, and every design choice
-is measured on held-out labelled examples that never appear in a prompt.
+Cairn reads the eight official task files and packages complete test predictions in the organiser's format.
+The context builder budgets unique demonstration tokens for annotation prompts. Auxiliary calls such as
+program induction use shorter inputs. The reports record preparation decisions, model usage and prediction sources.
 
 1. **A prompt shaped like a tree, not a pile.** Content that repeats goes first so the server reuses it; the
    examples most similar to the current input go last, where a small model reads best. On task 7 the layout cuts
@@ -314,6 +319,19 @@ Cairn therefore prefers a kernel that fails loudly over one that returns wrong n
 
 ## Results
 
+### Fourth real run and kernel replay
+
+| Evaluation | Measured result | What produced it |
+|---|---:|---|
+| Tasks 1–7, development | **80.95%**, up from 77.38% | All 15 additional correct answers came from task 2, which rose from 26/60 to 41/60 |
+| Task 7, development | 10/60 | Only three missed questions had the exact gold answer among the recorded votes |
+| Task 8, original GPU run | 0/24 callable | All 22 candidates that reached import failed because Triton could not read their source |
+| Task 8, CPU interpreter replay | **6/24 callable, 4/24 matched, local consistency 0.1111** | Same saved code, file-backed module loading and two numerical trials per verified result |
+| Task 2, retrieval-only experiment | 150/300 → 158/300 | A weighted vote over 12 official examples retrieved using lexical similarity or grammatical structure, respectively |
+
+The next Qwen run tests position-by-position counting and clue expansion for trivia. Each has a configuration
+switch for a paired comparison. [All eight task results](docs/09_FOURTH_RUN.md) · [Replay by kernel](docs/results/e003_cpu_replay.json)
+
 ### Third Real Run (E002)
 
 Kaggle, 2 × T4, commit `f13d95a`, 60 development inputs per task, 2026-11-17. Raw log:
@@ -331,7 +349,7 @@ Kaggle, 2 × T4, commit `f13d95a`, 60 development inputs per task, 2026-11-17. R
 | 7 Jeopardy answer | 16.7% (9–28) | cheap rung | cheap 20% vs **thinking 38%** (9 to 2, p = 0.065) |
 | 8 Triton kernel | not measured | dev inputs again (older notebook cell) | — |
 
-Mean over tasks 1–7: **77.4%** (E001: 74.8%; E000: 67.9%). What changed after this run:
+Mean over tasks 1–7: **77.4%** (E001 74.8%, E000 70.7%). What changed after this run:
 
 - **Task 2.** The labels follow a convention the task never states, found by regressing labels on words and
   reading labelled sentences: each word of a compound noun counts ("tennis court" = 2), helper verbs do not ("is
@@ -360,7 +378,7 @@ reports: [`docs/results/e001_reports/`](docs/results/e001_reports/) · analysis:
 | 7 Jeopardy answer | 18–32% | 20% (12–32) | cheap 68% @ 20% · thinking 32% @ 21% | ✅ landed (knowledge-bound) |
 | 8 Triton kernel | 0.05–0.25 | 0.000 | 24 of 24 `not_run` | ❌ dev inputs carry no signature → measured on test inputs now |
 
-Mean over tasks 1–7: **74.8%** (E000: 67.9%). Each miss traced to Cairn, not to the model:
+Mean over tasks 1–7: **74.8%** (E000 70.7%). The analysis identified three changes.
 
 - **Task 2.** Without scoring, the task fell through to four constrained samples, which agreed unanimously and were
   right 43% of the time. Agreement measures confidence, not correctness. The escalation probe now measures it.
@@ -378,7 +396,7 @@ on task 8. It showed which rungs work and exposed three defects: program inducti
 wrong cheap rung was trusted, and kernel execution was silent. All three were fixed before E001, and E001 confirms
 the first fix (tasks 1 and 3 at 100%).
 
-### Predictions for the Next Run (E003)
+### Forecast recorded before E003
 
 Written before the run, as in [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md) §8.
 
@@ -386,7 +404,7 @@ Written before the run, as in [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md) §8
 |---|--:|--:|--:|--:|--:|--:|--:|--:|
 | **Predicted** | 100% | 65–85% | 100% | 100% | 80–90% | 93–99% | 25–42% | callable 10–50%, consistency 0.00–0.20 |
 
-Predicted mean over tasks 1–7: about **80–87%**.
+The predicted mean was **80–87%**. The observed mean was **80.95%**. Trivia and kernel callability fell below their forecast ranges in the original run.
 
 ### Measured Without a Model
 
@@ -495,6 +513,27 @@ held-out evidence asks for it is the difference between finishing and not finish
 
 ## Installation and Reproduction
 
+### Competition run through FlagScale
+
+From the Cairn checkout, use the competition FlagScale environment and a local Qwen3-4B model configured for
+the long context window. The launcher uses the organiser's `run.py` entry point. Set both paths to the corresponding
+local directories. [Organiser's serving instructions](OpenSeek/openseek/competition/LongContext-ICL-Annotation/README.md)
+
+```bash
+python -m pip install -e ".[tokens]"
+export FLAGSCALE_DIR=/path/to/FlagScale MODEL_DIR=/path/to/Qwen3-4B
+bash scripts/flagscale_serve.sh run
+# Once the server is ready, from the Cairn checkout:
+cairn --config configs/default.yaml doctor
+export CAIRN_TRITON_INTERPRET=0
+cairn --config configs/default.yaml run --task all --split test --run-dir runs/flagscale-test
+cairn submit --run-dir runs/flagscale-test --out runs/flagscale-test/submission.zip
+bash scripts/flagscale_serve.sh stop
+```
+
+For a short development comparison or a CPU-only audit of the saved results, use the commands in the
+[fourth-run report](docs/09_FOURTH_RUN.md#reproduction).
+
 **Requirements:** Python 3.10 or newer. A GPU is needed only to serve Qwen3-4B; everything else runs on a CPU.
 CI runs the suite on Ubuntu with Python 3.10 and 3.12, plus a job that executes real Triton kernels on CPU.
 
@@ -535,7 +574,7 @@ cairn submit --run-dir runs/r1 --out submission.zip               # every id onc
 
 ```bash
 pip install -e ".[dev]"
-pytest                                   # 170 tests
+pytest
 cairn inspect                            # tasks, splits, token sizes
 cairn baseline                           # model-free reference scores
 cairn bench                              # every offline number → docs/results/offline_benchmarks.md
@@ -550,8 +589,8 @@ nothing about Qwen3-4B.
 
 | File | Purpose |
 |---|---|
-| [`configs/default.yaml`](configs/default.yaml) | the best expected score: stacked calibration, verified programs, every check on; each per-task override names the evidence it rests on |
-| [`configs/pure_icl.yaml`](configs/pure_icl.yaml) | the strict reading of the rules: every answer from the model alone, no executed programs, no model-free signals |
+| [`configs/default.yaml`](configs/default.yaml) | Current experiment with verified programs, stacked calibration and the November 24 counting and trivia changes |
+| [`configs/pure_icl.yaml`](configs/pure_icl.yaml) | Comparison profile with vector calibration, program induction and decomposition disabled, and the shared fallback policy |
 | [`configs/offline.yaml`](configs/offline.yaml) | no server at all; the stand-in model |
 
 Every key is validated at start-up; a misspelt setting stops the run with the list of allowed names.
@@ -560,6 +599,8 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 
 | Command | What it does |
 |---|---|
+| `cairn audit-dev` | Verifies journal IDs against the official dev split and recomputes exact-match results for tasks 1–7 |
+| `cairn replay-kernels` | Checks an existing task-8 prediction file. Add `--execute` for per-kernel runtime outcomes |
 | `cairn inspect` | sizes, splits, tokens per example, label sets |
 | `cairn context` | measures a prompt design (coverage, label runs, token minimum, cache reuse); `--show` prints a prompt |
 | `cairn baseline` | majority-label and nearest-example scores |
@@ -573,10 +614,8 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 
 ## Limitations
 
-- **Three real runs, at most 60 inputs per task.** Intervals are about ±12 points. The fixes made after E002
-  (counting rules, listing rung, revised probe rule, task-8 redirect) are tested with stand-in models, not yet with
-  Qwen3-4B; the predictions above are untested until E003 runs.
-- **Task 8 has never been executed on the GPU.** Three runs measured nothing; the first real number comes from E003.
+- **Four development runs.** The latest uses 60 inputs per text task. The November 24 changes have CPU measurements and regression coverage. Their end-to-end Qwen3-4B accuracy still needs measurement.
+- **Kernel evaluation.** The CPU replay covers 24 of 166 official test signatures. Two numerical trials per match give limited coverage of shapes, dtypes and optional parameters. GPU and organiser measurements remain open.
 - **The probe is small.** Forty held-out inputs detect large gains (task 2) but can miss small ones; by design it
   then keeps the cheaper policy.
 - **Task 8 has no development split.** Its demonstrations differ in format from its test inputs, so it is measured
@@ -585,12 +624,10 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 - **FlagScale.** The rules require FlagScale as the development framework. Every real run so far served Qwen3-4B
   with vLLM directly; the FlagScale configuration is provided (it passes the same engine arguments to vLLM) but
   has not yet been run end to end.
-- **Rule interpretation.** Executing model-written programs (tasks 1, 3, 4) and stacking model-free signals
-  (nearest-example vote, sentence overlap) are within the letter of the rules, since no second model is used, but
-  a strict reading could object. `configs/pure_icl.yaml` keeps a path in which every answer comes from the model
-  alone, and both numbers should be reported.
-- **Knowledge-bound trivia.** Task 7 is limited by what a 4B model knows. Cairn stops known answers from being
-  lost to spelling; it cannot add knowledge.
+- **Compliance review.** The enhanced profile uses shorter program-induction calls, execution of model-written
+  programs and model-free calibration signals. The organiser determines eligibility. The comparison profile disables
+  program induction, decomposition and those calibration signals. Both profiles record fallback sources.
+- **Trivia.** On 47 of 50 missed dev questions the exact gold answer was absent from the recorded votes. The experimental clue expansion uses Qwen3-4B to retrieve a second set of official examples. Its accuracy and cost need a paired evaluation.
 - **Generated kernels.** Kernels with a PyTorch twin are checked against it; fused operations without one are only
   checked to run and return finite tensors. Task 8 is expected to remain the weakest task.
 - **Continuous annotation is unmeasured.** Session memory and induced rulebooks are built and tested with stand-in
@@ -606,6 +643,7 @@ Every key is validated at start-up; a misspelt setting stops the run with the li
 
 | Read | For |
 |---|---|
+| [Fourth run and replay](docs/09_FOURTH_RUN.md) | The dated project history, all eight results, diagnosed errors, implementation changes and next ablations |
 | [`docs/LEARNING_GUIDE.md`](docs/LEARNING_GUIDE.md) | every idea explained in five parts: one line, a picture, a real example, the steps, one line to remember |
 | [`docs/06_FIRST_REAL_RUN.md`](docs/06_FIRST_REAL_RUN.md) | validating a real result, diagnosing it, a twelve-step reasoning method, a time budget, predictions |
 | [`docs/08_THIRD_RUN.md`](docs/08_THIRD_RUN.md) | selection bias, silent truncation, finding a label convention in the data, decomposition, statistical power |
@@ -631,7 +669,7 @@ cairn/
 └── config.py · doctor.py · submit.py · cli.py
 configs/    settings profiles and server launch files (vLLM, FlagScale)
 scripts/    kaggle_run.sh (2 × T4) · gpu_run.sh (one GPU)
-tests/      170 tests, including a fake HTTP model server and Triton kernels on CPU
+tests/      unit and integration tests, including a local HTTP model server and Triton kernels on CPU
 docs/       learning guide, run analysis, experiment log, results, plan, notebook
 OpenSeek/   the official competition repository: data and baseline, unchanged
 ```

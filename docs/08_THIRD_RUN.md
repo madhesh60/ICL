@@ -1,5 +1,7 @@
 # 08 — The third real run: the probe corrects me, and task 2 gets a counting method
 
+The next run took place on November 18. Its analysis compares the forecasts below with the measured outcomes. [Fourth run](09_FOURTH_RUN.md)
+
 > Companion to `07_SECOND_RUN.md`, whose §8 predicted this run. Raw log:
 > `docs/results/kaggle_run_2026-11-17b_raw.md`. Per-task reports: `docs/results/e002_reports/`.
 > Kaggle, 2 x Tesla T4, commit `f13d95a`, 60 dev inputs per task, 2026-11-17.

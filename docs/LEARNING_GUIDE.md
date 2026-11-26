@@ -1,5 +1,31 @@
 # Learning Guide: how Cairn works, and how to think when you build things like it
 
+## November 26 · Choosing the next experiment from a checkpoint
+
+The saved run finished development tasks 1, 3, 4, 5 and 6. On those same 300 questions E003 had 289 correct and the new run had 284. Task 5 accounted for the whole difference. Task 7 had nine saved answers from the 60-question batch. The scheduler groups questions by prompt prefix, so those nine were scattered across the batch. Counting the first nine rows of an older journal would compare different clues. Join on the official question ID.
+
+| Task | Evidence so far | Algorithm and next decision |
+|---|---|---|
+| 1, 3, 4 · exact transformations | Verified programs scored 60/60 on each development batch in both runs. | Keep these policies fixed during the targeted comparison. Reuse validated development results when resuming finals. The complete test files are still required. |
+| 2 · noun and verb counts | E003 scored 41/60. None of its 19 misses had the correct count among the recorded reasoning votes. | Retrieve demonstrations with similar grammatical structure. Ask Qwen to mark individual word positions and sum the valid marks in code. Inspect wrong counts, missing votes and fallback use alongside paired accuracy. |
+| 5 · tweet sadness | A 40-question calibration probe favored reasoning, 36 correct to 30. On development, switching all 60 tweets to reasoning gained one answer and lost six. | Use the calibrated label scorer directly. Replay scored 51/60 using November calibration replies and E003 label-score replies, compared with 46/60 from November reasoning. The same development batch guided this decision. A fresh run and an independent check are still needed. |
+| 6 · same genre | 58/60 in both runs, with the same two misses. | Keep the current policy. A change here would need evidence on additional examples. |
+| 7 · trivia | E003 scored 10/60. Only three of its 50 misses contained the gold answer elsewhere in the votes. November scored 4/9 on the nine finished clues, up from 3/9 on those IDs. | The reasoning path generates search terms for the answer type and relationship, retrieves official demonstrations, then answers the original clue. Check all 60 clues. The nine-question overlap is an additional paired check. |
+| 8 · Triton kernels | The old executor failed while importing 22 candidates. The saved CPU replay later found four numerical matches. | Write generated kernels to importable Python files. Replay the original and regenerated predictions on the same GPU using the same 24 signatures and reference trials. Report callable count, PyTorch matches and local consistency together. |
+
+Two mistakes shaped the run design. The original finals launcher put a full 500-question test batch between development batches and exceeded the Kaggle session limit. Separately, comparing new GPU results directly to the old broken executor would credit an evaluator repair to the model. The targeted run finishes the two 60-question text comparisons and the paired 24-kernel replay separately from finals.
+
+Read `comparison.json` by task. For text, inspect IDs that moved from wrong to right and from right to wrong. For kernels, inspect which IDs gained numerical matches and why others failed. Multiple implementation changes entered this comparison together. To attribute a gain to one algorithm, hold the other settings fixed and rerun that component on the same IDs. Keep the reserved holdout for evaluating the selected text policies. The eight-task finals archive requires all 3,666 official test predictions. [Run history](09_FOURTH_RUN.md) · [Checkpoint results](KAGGLE_FINALS.md)
+
+## An interview walkthrough from the November 24 investigation
+
+1. **Describe the constraint.** Qwen3-4B must label eight tasks from official demonstrations. The prompt budget, held-out examples and finite inference time each affect the design.
+2. **Quantify the problem.** Task 2 improved by 15 answers on 60 dev inputs. On trivia, guessing a better tie-breaker could recover at most three of fifty misses. These two tasks call for different experiments.
+3. **Walk through a failure end to end.** The task-8 report printed zero static passes. The journal showed 22 JIT import errors. Static replay of the submitted bytes passed 22 kernels. File-backed import allowed six to run, and reference checks validated four. Explain what evidence each stage contributes.
+4. **State the remaining uncertainty.** A 24-kernel CPU replay tests the harness and a subset of generated code. The competition uses its own GPU inputs. For the new counting and trivia methods, compare fixed IDs, cost and paired outcomes before reporting a gain.
+
+[Commands, evidence and original predictions](09_FOURTH_RUN.md)
+
 This guide is for you, not for a reader of the code. The goal is that after reading it you
 can rebuild the ideas yourself, explain them in an interview, and know what to do when
 something breaks — without needing an AI to tell you.

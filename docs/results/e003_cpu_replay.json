@@ -1,0 +1,213 @@
+{
+  "execution_requested": true,
+  "total_test_inputs": 166,
+  "summary": {
+    "n": 24,
+    "static_ok": 0.9166666666666666,
+    "callable": 0.25,
+    "matches_torch": 0.16666666666666666,
+    "consistency": 0.1111111111111111,
+    "statuses": {
+      "unconfirmed_error": 9,
+      "call_error": 6,
+      "exec_ok": 4,
+      "not_run": 2,
+      "called_no_reference": 2,
+      "no_valid_inputs": 1
+    }
+  },
+  "cases": {
+    "openseek-8-501f776ba20444458ac14dd7292cc913": {
+      "wrapper": "fused_bmm_rmsnorm_gelu_dropout_sub",
+      "static_ok": false,
+      "problems": [
+        "These names do not exist in triton.language: tl.current_program_id, tl.tanh."
+      ],
+      "exec_status": "not_run"
+    },
+    "openseek-8-82c29f05c3434437917c95f49fadff01": {
+      "wrapper": "div",
+      "static_ok": false,
+      "problems": [
+        "These names do not exist in triton.language: tl.round."
+      ],
+      "exec_status": "not_run"
+    },
+    "openseek-8-76a66f9a2bd5449fbb57b2b0a0bd7ec7": {
+      "wrapper": "sigmoid_conv2d",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised ValueError: not enough values to unpack (expected 4, got 2)",
+      "inputs": ""
+    },
+    "openseek-8-616ca19cad034c8ba1763cbd4420b620": {
+      "wrapper": "solve_multiple_lu",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised InterpreterError: ValueError(\"arange's arguments must be of type tl.constexpr\")",
+      "inputs": ""
+    },
+    "openseek-8-7cc09b51ea774c9d9e44cd680d32435c": {
+      "wrapper": "tanh",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)] raised InterpreterError: AttributeError(\"module 'triton.language.math' has no attribute 'tanh'\")",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-a82af84ea5a14dc9b58d50f504ec8f5e": {
+      "wrapper": "relu_sqrt",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "called_no_reference",
+      "detail": "ran with tensor shapes [(32, 64)]",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-215a58cbaf6d4e96a69284d61aeeaf3c": {
+      "wrapper": "sqrt",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "exec_ok",
+      "detail": "matches torch on 2 input trials",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-521e38ea57b1490a96e6dc76ff2f57b9": {
+      "wrapper": "sigmoid_argmax",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "called_no_reference",
+      "detail": "ran with tensor shapes [(32, 64)]",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-b41b0e3a84e4430887282bc3faed8b81": {
+      "wrapper": "sub",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "exec_ok",
+      "detail": "matches torch on 2 input trials",
+      "inputs": "tensor shapes [(32, 64), (32, 64)]"
+    },
+    "openseek-8-ca9d997e5aef49cf8d0bbf48b8a22fbd": {
+      "wrapper": "grid_sample",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "no_valid_inputs",
+      "detail": "none of 24 argument guesses was accepted",
+      "inputs": ""
+    },
+    "openseek-8-757113b30aed48eabfecadffd0aa1118": {
+      "wrapper": "linalg.svd",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)] raised UnboundLocalError: local variable 'k' referenced before assignment",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-188273dd82f7465dafa78d1430aeb9ee": {
+      "wrapper": "i0",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)] raised InterpreterError: TypeError(\"unsupported operand type(s) for ** or pow(): 'tensor' and 'int'\")",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-e7f5dd02bec34352add8c7935b6d790f": {
+      "wrapper": "rsqrt",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)] raised InterpreterError: TypeError(\"'dtype' object is not callable\")",
+      "inputs": "tensor shapes [(32, 64)]"
+    },
+    "openseek-8-b36ca7e6da114f799ec8f9feaf26a769": {
+      "wrapper": "dropout_relu_batch_norm_conv2d",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised ValueError: not enough values to unpack (expected 4, got 2)",
+      "inputs": ""
+    },
+    "openseek-8-d4a55c1a2818498b9907bdaf461f3d0c": {
+      "wrapper": "fused_mv_logsoftmax_dropout",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised AssertionError: ",
+      "inputs": ""
+    },
+    "openseek-8-ddceed268b2546188db6e761c68b9522": {
+      "wrapper": "add",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "exec_ok",
+      "detail": "matches torch on 2 input trials",
+      "inputs": "tensor shapes [(32, 64), (32, 64)]"
+    },
+    "openseek-8-1a5b486bc85e4509a30bba465ae7a0f4": {
+      "wrapper": "fused_silu_layer_norm_conv2d",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (6, 10), (6, 10)] raised ValueError: not enough values to unpack (expected 4, got 2)",
+      "inputs": ""
+    },
+    "openseek-8-1cc25388256c4207b53289a81921b12c": {
+      "wrapper": "fused_index_select_eq",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)], {'dim': 1} raised AssertionError: ",
+      "inputs": ""
+    },
+    "openseek-8-bfb26a8289784475a2c5132dd723f6b3": {
+      "wrapper": "argmax",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)], {'dim': -1} raised NameError: name 'math' is not defined",
+      "inputs": "tensor shapes [(32, 64)], {'dim': -1}"
+    },
+    "openseek-8-d8c481c6232b4f68baba55a9f6fcfa8f": {
+      "wrapper": "fused_lu_solve",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised InterpreterError: ValueError('Mask argument cannot be block type if pointer argument is not a block')",
+      "inputs": ""
+    },
+    "openseek-8-45c89b4e8cef4315bfaa885afd98c669": {
+      "wrapper": "normalize_pairwise_distance",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised AssertionError: ",
+      "inputs": ""
+    },
+    "openseek-8-eed93a70ff1546d8aa68ef247bc922bd": {
+      "wrapper": "max",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "call_error",
+      "detail": "calling with tensor shapes [(32, 64)], {'dim': -1} raised TypeError: max_kernel() missing 2 required positional arguments: 'BLOCK_M' and 'BLOCK_N'",
+      "inputs": "tensor shapes [(32, 64)], {'dim': -1}"
+    },
+    "openseek-8-f7521a91f83c43da8791d9f29ea31535": {
+      "wrapper": "log_softmax_linear",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "unconfirmed_error",
+      "detail": "calling with tensor shapes [(6, 10), (10, 4)] raised NameError: name 'BLOCK_SIZE' is not defined",
+      "inputs": ""
+    },
+    "openseek-8-3a629a95117a4ca18edda2c3bc560fc0": {
+      "wrapper": "relu",
+      "static_ok": true,
+      "problems": [],
+      "exec_status": "exec_ok",
+      "detail": "matches torch on 2 input trials",
+      "inputs": "tensor shapes [(32, 64)]"
+    }
+  }
+}

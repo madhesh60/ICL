@@ -3,12 +3,13 @@
 > Companion to `01_CODEBASE_EXPLAINED.md` (what exists) and `03_RESEARCH_NOTEBOOK.md` (thinking space).
 > This file is the *execution* plan. Update the checkboxes as we go.
 
-## Status (November 2026)
+## Status on November 24, 2026
 
 The planned `solution/` package was built as **`cairn/`** (see the root `README.md`).
-Everything that does not need a GPU is done and tested (140 tests); the measured numbers
-are in `docs/results/offline_benchmarks.md`. What remains needs a Linux GPU box:
-`bash scripts/gpu_run.sh` (or `STAGE=dev` to stop after the dev score).
+Four Qwen3-4B runs reached 80.95% across the seven text development tasks.
+The repaired kernel executor recovered four PyTorch matches on a CPU replay of 24 saved predictions.
+The next experiment pairs the new counting and trivia strategies against controls on FlagScale, followed
+by full test inference on all eight tasks. [Fourth run and ablation plan](09_FOURTH_RUN.md)
 
 | plan item | status | where |
 |---|---|---|
@@ -23,7 +24,7 @@ are in `docs/results/offline_benchmarks.md`. What remains needs a Linux GPU box:
 | task 8: signature lock, static check, compile/run, repair loop | done; runs on CPU via Triton interpreter mode | `cairn/tasks/kernel*.py` |
 | everything logged, resumable runs | done: journal, response cache, run reports, settings fingerprint | `cairn/pipeline/`, `cairn/cli.py` |
 | submission zip in the official format | done, with validation | `cairn/submit.py` |
-| **real Qwen3-4B runs, ablations, context-length sweep** | **open — needs a GPU** | `cairn run`, `cairn tune` |
+| **Qwen3-4B experiments** | Four partial development runs complete. FlagScale reproduction, context-length study and full test submission pending | `scripts/flagscale_serve.sh`, `cairn run`, `cairn submit` |
 
 New since the plan: the task-6 data finding (sentence overlap alone gives 93–95% on dev,
 see the learning guide §8), and the measured 32% format loss of the official baseline.
