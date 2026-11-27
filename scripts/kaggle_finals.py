@@ -14,6 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path("/kaggle/working/cairn-finals")
 MARKER = "e004-files.sha256"
+# f7ae571 has identical inference settings and an older hardware inventory check.
+SAME_POLICY = "b75b18aa451e84dc800b77bb406b44c22ed2cb0d9df3ff0d217f2265fa3868cd"
 # Only the task 5 inference policy changed from these two published finals snapshots.
 PREVIOUS_FINALS = {
     "1f16a09b37f2b8ee995f4146e4c78c973928a3e96074c43d8a62da88482826ea",
@@ -38,7 +40,9 @@ def restore(out, inputs, current):
         if not marker.is_file():
             return False
         data = marker.read_bytes()
-        return data == current or hashlib.sha256(data).hexdigest() in PREVIOUS_FINALS
+        return data == current or hashlib.sha256(data).hexdigest() in PREVIOUS_FINALS | {
+            SAME_POLICY
+        }
 
     if out.exists() and any(out.iterdir()):
         if not compatible(out):
@@ -63,7 +67,7 @@ def restore(out, inputs, current):
             out.mkdir(exist_ok=True)
             print("Starting a new finals run. No compatible saved finals output was found.")
     marker = out / MARKER
-    if marker.is_file() and marker.read_bytes() != current:
+    if marker.is_file() and hashlib.sha256(marker.read_bytes()).hexdigest() in PREVIOUS_FINALS:
         # Retain raw model replies by request hash. Old predictions and any final
         # artifacts based on them must no longer count as finished under the new policy.
         prior = out / "prior-task5-policy"

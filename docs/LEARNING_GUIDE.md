@@ -1,5 +1,9 @@
 # Learning Guide: how Cairn works, and how to think when you build things like it
 
+## November 27 · Checking the hardware of a saved Kaggle version
+
+The comparison at `f7ae571` stopped at the shell command `nvidia-smi` with exit 127. Qwen had not loaded and the version produced no accuracy measurement. That error establishes only that the shell could not find the utility. To distinguish missing tools from missing hardware, initialize the CUDA driver in the actual saved job, enumerate the devices and print their model names before installing packages. Once the inference dependencies are installed, allocate and read a small tensor on each device before downloading the model. A CPU-only saved job requires a new version with a GPU allocation. The nine-question trivia overlap and the full paired baselines remain valid across this hardware-check change.
+
 This guide is for you, not for a reader of the code. The goal is that after reading it you
 can rebuild the ideas yourself, explain them in an interview, and know what to do when
 something breaks — without needing an AI to tell you.

@@ -14,6 +14,19 @@ from cairn.tasks.kernel_exec import CALLABLE, PROVEN_GOOD
 
 ROOT = Path(__file__).resolve().parents[1]
 OLD = ROOT / "dev_results_now"
+# ID suffixes and correctness from the nine task 7 rows saved on November 26.
+# Used only after inference when scoring the finished development journal.
+NOV26_TRIVIA = {
+    "b77714c5d3a94a7a95ce011379eda631": False,
+    "108979d016794d3db114313885746e8c": False,
+    "043888c8bb324ebdb36a2f062c53992a": True,
+    "dea0bf59fcf94a9db17aeb8c589d45e7": False,
+    "6ccb3e4c16fd4b788200cd460b30c32b": False,
+    "518cc4c59a5547faa00bfa7e46f3d5ce": True,
+    "bbc22d98192a44f199ab264e87b78a08": True,
+    "c6963981336e4b60bff09bddf93cbcb3": False,
+    "37cfef79c88e4f5aa85e6ca450c1135d": True,
+}
 
 
 def rows_by_id(path, key, expected):
@@ -86,13 +99,20 @@ def main():
         if new is None:
             print(f"Task {task_id}: verified E003 {sum(before)}/{len(ids)} by ID")
             continue
-        result = paired(ids, before, dev_hits(new, task_id, queries))
+        after = dev_hits(new, task_id, queries)
+        result = paired(ids, before, after)
         comparisons[f"task{task_id}"] = result
         print(
             f"Task {task_id}: {sum(before)}/60 -> {result['new_correct']}/60 "
             f"({result['delta_pp']:+.1f} pp), {len(result['gained_ids'])} gained, "
             f"{len(result['regressed_ids'])} regressed, paired p={result['mcnemar_exact_p']:.4g}"
         )
+        if task_id == 7:
+            hits = dict(zip(ids, after, strict=True))
+            subset = [f"openseek-7-{suffix}" for suffix in NOV26_TRIVIA]
+            overlap = paired(subset, list(NOV26_TRIVIA.values()), [hits[i] for i in subset])
+            result["nov26_overlap"] = overlap
+            print(f"Task 7 on the nine November 26 clues: 4/9 -> {overlap['new_correct']}/9")
 
     task = load_task(8)
     ids = [q.id for q in task.test[:24]]

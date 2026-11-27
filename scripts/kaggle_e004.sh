@@ -17,7 +17,14 @@ exec > >(tee -a "$OUT/run.log") 2>&1
 # Tie resumable responses to the packaged source, config, official data and baseline.
 sha256sum --check --quiet e004-files.sha256
 if [[ -e "$OUT/e004-files.sha256" ]] && compgen -G "$OUT/task*" >/dev/null; then
-  cmp e004-files.sha256 "$OUT/e004-files.sha256"
+  if ! cmp -s e004-files.sha256 "$OUT/e004-files.sha256"; then
+    # The earlier f7ae571 comparison used the same inference configuration.
+    old_hash=$(sha256sum "$OUT/e004-files.sha256")
+    [[ ${old_hash%% *} == b75b18aa451e84dc800b77bb406b44c22ed2cb0d9df3ff0d217f2265fa3868cd ]] || {
+      echo "Saved predictions belong to a different snapshot: $OUT" >&2; exit 1;
+    }
+    cp e004-files.sha256 "$OUT/"
+  fi
 elif [[ -e "$OUT/task2" || -e "$OUT/task7" || -e "$OUT/task8" ]]; then
   echo "Existing task output has no snapshot identity. Use a fresh notebook session." >&2
   exit 1
@@ -30,10 +37,9 @@ export CUDA_VISIBLE_DEVICES CAIRN_TRITON_INTERPRET=0
 unset CAIRN_TOKENIZER CAIRN_TRITON_PYTHON TRITON_INTERPRET
 export CAIRN_DATA_DIR="$ROOT/OpenSeek/openseek/competition/LongContext-ICL-Annotation/data"
 export CAIRN_QWEN_VOCAB="$ROOT/OpenSeek/hf_openseek/tokenizer/qwen.tiktoken"
-nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv | tee "$OUT/gpus.txt"
-if [[ $(grep -c 'T4' "$OUT/gpus.txt") != 2 ]]; then
-  echo "Select GPU T4 x2 to match E003." >&2
-  exit 1
+python scripts/kaggle_gpu.py | tee "$OUT/gpus.txt"
+if command -v nvidia-smi >/dev/null; then
+  nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv >> "$OUT/gpus.txt" || true
 fi
 RUNTIME=/tmp/cairn-e004-runtime
 mkdir -p "$RUNTIME/lib"
@@ -76,8 +82,11 @@ import socket
 import torch
 import triton
 from cairn.tokens import get_counter
-if torch.cuda.device_count() != 2 or get_counter().name != "tiktoken-qwen":
+if not torch.cuda.is_available() or torch.cuda.device_count() != 2 or get_counter().name != "tiktoken-qwen":
     raise RuntimeError("Expected two CUDA devices and the same bundled Qwen token counter as E003")
+for device in ("cuda:0", "cuda:1"):
+    if torch.ones(1, device=device).item() != 1:
+        raise RuntimeError(f"PyTorch CUDA check failed on {device}")
 with socket.socket() as port:
     port.bind(("127.0.0.1", 2026))
 print("GPU executor ready", torch.__version__, triton.__version__)
